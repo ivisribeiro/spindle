@@ -9,10 +9,10 @@ export interface CliResult {
   json: any;
 }
 
-/** Run the ahx CLI in-process, capturing stdout. Exercises the full exit-code ABI. */
+/** Run the spin CLI in-process, capturing stdout. Exercises the full exit-code ABI. */
 export async function cli(args: string[]): Promise<CliResult> {
   let buf = '';
-  const code = await runCli(['node', 'ahx', ...args], (c) => {
+  const code = await runCli(['node', 'spin', ...args], (c) => {
     buf += c;
   });
   let json: any;
@@ -25,7 +25,7 @@ export async function cli(args: string[]): Promise<CliResult> {
 }
 
 export function tmpProject(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'ahx-test-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'spin-test-'));
 }
 
 export function write(root: string, rel: string, content: string): void {

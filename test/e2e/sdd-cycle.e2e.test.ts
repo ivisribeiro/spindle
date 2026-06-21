@@ -15,7 +15,7 @@ afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
 const R = (...args: string[]) => cli(['--root', root, ...args]);
 
-describe('E2E: full SDD cycle through the ahx CLI', () => {
+describe('E2E: full SDD cycle through the spin CLI', () => {
   it('blocks on incomplete state and completes only when real', async () => {
     // --- init ---
     expect((await R('init', '--schema', 'sdd', '--feature', 'sample')).code).toBe(0);
@@ -25,13 +25,13 @@ describe('E2E: full SDD cycle through the ahx CLI', () => {
     expect(next.json.ready.map((x: any) => x.id)).toContain('define');
 
     // --- Phase 0: brainstorm (optional, no gate) ---
-    write(root, '.ahx/features/sample/BRAINSTORM.md', '# ideas\n');
+    write(root, '.spindle/features/sample/BRAINSTORM.md', '# ideas\n');
     expect((await R('complete', 'brainstorm')).code).toBe(0);
 
     // --- Phase 1: define ---
     write(
       root,
-      '.ahx/features/sample/DEFINE.md',
+      '.spindle/features/sample/DEFINE.md',
       '## Why\nusers need login\n## What\nan auth flow\n## Acceptance Criteria\n- AC-1 user can log in\n- AC-2 invalid creds rejected\n'
     );
     const defineHandoff = writeJson(root, 'work/define.json', {
@@ -50,7 +50,7 @@ describe('E2E: full SDD cycle through the ahx CLI', () => {
     // --- Phase 2: design ---
     write(
       root,
-      '.ahx/features/sample/DESIGN.md',
+      '.spindle/features/sample/DESIGN.md',
       '## Overview\nauth service\n## File Manifest\n\n| File | Action | Purpose |\n| --- | --- | --- |\n| src/auth.ts | create | login |\n| src/session.ts | create | sessions |\n\n## Decisions\nuse JWT\n'
     );
     const designHandoff = writeJson(root, 'work/design.json', {
@@ -66,7 +66,7 @@ describe('E2E: full SDD cycle through the ahx CLI', () => {
 
     // --- Phase 3: build — write ONLY one of two manifest files ---
     write(root, 'src/auth.ts', '// auth\n');
-    write(root, '.ahx/features/sample/BUILD_REPORT.md', '# build report\n');
+    write(root, '.spindle/features/sample/BUILD_REPORT.md', '# build report\n');
     const buildHandoff = writeJson(root, 'work/build.json', {
       feature: 'sample',
       results: [
@@ -93,7 +93,7 @@ describe('E2E: full SDD cycle through the ahx CLI', () => {
     expect(diff.json.unmet).toEqual([]);
     expect((await R('gate', 'G_SHIP')).code).toBe(0);
 
-    write(root, '.ahx/features/sample/SHIPPED.md', '# shipped\n');
+    write(root, '.spindle/features/sample/SHIPPED.md', '# shipped\n');
     expect((await R('complete', 'ship')).code).toBe(0);
 
     // --- final state: everything complete ---
@@ -116,10 +116,10 @@ describe('E2E: full SDD cycle through the ahx CLI', () => {
       feature: 'partial',
       results: [{ criterion: 'AC-1', status: 'passed' }],
     });
-    write(root, '.ahx/features/partial/DEFINE.md', '## Why\nx\n## What\ny\n## Acceptance Criteria\nAC-1 a\nAC-2 b\n');
+    write(root, '.spindle/features/partial/DEFINE.md', '## Why\nx\n## What\ny\n## Acceptance Criteria\nAC-1 a\nAC-2 b\n');
     await R('complete', 'define', '--handoff', defineHandoff);
     // even with the define+build handoffs present, G_SHIP must block on AC-2
-    fs.copyFileSync(buildHandoff, `${root}/.ahx/features/partial/.handoffs/build.json`);
+    fs.copyFileSync(buildHandoff, `${root}/.spindle/features/partial/.handoffs/build.json`);
     const ship = await R('gate', 'G_SHIP');
     expect(ship.code).toBe(1);
     expect(ship.json.unmet).toContain('AC-2');

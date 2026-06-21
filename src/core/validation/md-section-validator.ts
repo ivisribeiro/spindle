@@ -1,5 +1,5 @@
 // Structural markdown validation: assert required "## Section" headers exist and
-// have non-empty bodies. Used by `ahx validate` and the SDD gates. Deterministic.
+// have non-empty bodies. Used by `spin validate` and the SDD gates. Deterministic.
 
 export interface SectionIssue {
   section: string;

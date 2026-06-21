@@ -30,8 +30,8 @@ let handoffDir: string;
 let ctx: GateContext;
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), 'ahx-gate-'));
-  featureDir = path.join(root, '.ahx', 'features', 'feat');
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'spin-gate-'));
+  featureDir = path.join(root, '.spindle', 'features', 'feat');
   handoffDir = path.join(featureDir, '.handoffs');
   fs.mkdirSync(handoffDir, { recursive: true });
   ctx = {

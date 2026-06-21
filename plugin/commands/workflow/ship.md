@@ -20,13 +20,13 @@ Exit 0 → continue.
 ### 2. Diff criteria (define vs build)
 
 `diff-criteria` reads the JSON **handoff sidecars** (not the markdown artifacts).
-`ahx complete` stored them at `.handoffs/<artifact-id>.json`, so use `define.json`
+`spin complete` stored them at `.handoffs/<artifact-id>.json`, so use `define.json`
 and `build.json`:
 
 ```
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js diff-criteria \
-  --define .ahx/features/<feature>/.handoffs/define.json \
-  --build  .ahx/features/<feature>/.handoffs/build.json
+  --define .spindle/features/<feature>/.handoffs/define.json \
+  --build  .spindle/features/<feature>/.handoffs/build.json
 ```
 
 If `unmet[]` is non-empty → surface the unmet criteria to the user and STOP. Do not proceed to G_SHIP.
@@ -61,11 +61,11 @@ Dispatch ONE worker via the Task tool on the model returned above. Pass it:
   > Read DEFINE.md and BUILD_REPORT.md for this feature.
   > Produce TWO artifacts:
   >
-  > 1. `.ahx/features/<feature>/SHIPPED.md` — an archive document with sections:
+  > 1. `.spindle/features/<feature>/SHIPPED.md` — an archive document with sections:
   >    ## Summary, ## Criteria Met, ## Artifacts, ## Run Log
   >    Prose only. Do not invent data not present in the build report.
   >
-  > 2. `.ahx/features/<feature>/LESSONS.md` — prose-only retrospective with sections:
+  > 2. `.spindle/features/<feature>/LESSONS.md` — prose-only retrospective with sections:
   >    ## What Worked, ## What Was Hard, ## Carry Forward
   >    Derive only from the build report and gate outcomes. No speculation.
 

@@ -15,34 +15,34 @@ You are a KB concept worker. You author exactly ONE concept file and ONE handoff
 
 - `FEATURE` — the KB feature slug (e.g. `dbt-lineage`)
 - `CONCEPT` — the concept slug to author (e.g. `incremental-strategy`)
-- `SCHEMA_PATH` — path to the active `.ahx/schema.yaml` for this run
-- `ARTIFACT_ID` — the artifact id the orchestrator will pass to `ahx complete`
+- `SCHEMA_PATH` — path to the active `.spindle/schema.yaml` for this run
+- `ARTIFACT_ID` — the artifact id the orchestrator will pass to `spin complete`
 
 ## Step 1 — Orient
 
 Read the active schema and any existing artifacts to understand scope:
 
 ```bash
-ahx schema show
-ahx state
+spin schema show
+spin state
 ```
 
-Read `.ahx/features/${FEATURE}/` to find existing concept files and the KB index if present:
+Read `.spindle/features/${FEATURE}/` to find existing concept files and the KB index if present:
 
 ```bash
 # list what already exists
-ls .ahx/features/${FEATURE}/
+ls .spindle/features/${FEATURE}/
 ```
 
 Use Grep/Glob to locate any source material the orchestrator placed under
-`.ahx/features/${FEATURE}/source/` or referenced in `run.json`.
+`.spindle/features/${FEATURE}/source/` or referenced in `run.json`.
 
 ## Step 2 — Author the concept file
 
 Write the file at:
 
 ```
-.ahx/features/${FEATURE}/concept-${CONCEPT}.md
+.spindle/features/${FEATURE}/concept-${CONCEPT}.md
 ```
 
 The file MUST contain these sections in order:
@@ -87,7 +87,7 @@ The file MUST contain these sections in order:
 Write the JSON sidecar at:
 
 ```
-.ahx/features/${FEATURE}/.handoffs/${ARTIFACT_ID}.json
+.spindle/features/${FEATURE}/.handoffs/${ARTIFACT_ID}.json
 ```
 
 The sidecar MUST conform to the `kb-concept` handoff schema:
@@ -111,7 +111,7 @@ Set `needs_decoding: true` if you applied the E-1 rule for any opaque encoding i
 ## Step 4 — Validate the artifact
 
 ```bash
-ahx validate ${ARTIFACT_ID}
+spin validate ${ARTIFACT_ID}
 ```
 
 If exit code is 1, read the output, fix the concept file, and re-validate. Do not proceed until exit 0.
@@ -119,16 +119,16 @@ If exit code is 1, read the output, fix the concept file, and re-validate. Do no
 ## Step 5 — Complete the artifact
 
 ```bash
-ahx complete ${ARTIFACT_ID} --handoff .ahx/features/${FEATURE}/.handoffs/${ARTIFACT_ID}.json
+spin complete ${ARTIFACT_ID} --handoff .spindle/features/${FEATURE}/.handoffs/${ARTIFACT_ID}.json
 ```
 
 - Exit 0 → done. Report the concept slug and a one-line summary.
-- Exit 1 → the handoff failed schema validation. Read the error, fix the sidecar JSON, and retry `ahx complete`.
+- Exit 1 → the handoff failed schema validation. Read the error, fix the sidecar JSON, and retry `spin complete`.
 - Never mark the artifact complete by any other means.
 
 ## Constraints
 
 - Write ONLY the two files above (concept file + handoff sidecar). Do not touch run.json, schema.yaml, or any other artifact.
 - Do not run npm, git, tests, or any build command.
-- Use only ahx commands documented in the authoring context: `ahx validate`, `ahx complete`, `ahx state`, `ahx schema show`.
-- The `--handoff` flag on `ahx complete` is the gate enforcer — do not skip it.
+- Use only spin commands documented in the authoring context: `spin validate`, `spin complete`, `spin state`, `spin schema show`.
+- The `--handoff` flag on `spin complete` is the gate enforcer — do not skip it.

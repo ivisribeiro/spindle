@@ -1,6 +1,6 @@
-# agentspec-harness — Architecture
+# spindle — Architecture
 
-> The deterministic spine that makes an LLM workflow *testable*. `ahx` is the
+> The deterministic spine that makes an LLM workflow *testable*. `spin` is the
 > state machine and gatekeeper; the slash commands are the only model-execution
 > layer. The seam between them is the whole design.
 
@@ -8,10 +8,10 @@
 
 ## 1. The one invariant
 
-**`ahx` (the CLI) NEVER calls a model.** It is a real TypeScript/Node executable
+**`spin` (the CLI) NEVER calls a model.** It is a real TypeScript/Node executable
 — esbuild-bundled, vitest-tested, commander-based — that owns every deterministic
 decision: dependency ordering, structural validation, named gates, run-state, and
-model routing. The slash commands are the only place a model runs. They call `ahx`
+model routing. The slash commands are the only place a model runs. They call `spin`
 for every ordering/validation/gate/state decision, branch strictly on its **exit
 code**, and fan out worker subagents via the `Task` tool.
 
@@ -56,17 +56,17 @@ and it is forbidden.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│  DETERMINISTIC  (ahx — TypeScript, vitest-tested, NEVER calls model)  │
+│  DETERMINISTIC  (spin — TypeScript, vitest-tested, NEVER calls model)  │
 │  • Kahn topo-order over schema.yaml      • named gates (exit-code ABI)│
 │  • structural validation (Zod)           • run-state ledger          │
 │  • criteria set-diff                      • model-route policy        │
 └─────────────────────────────────────────────────────────────────────┘
                               ▲   │
-                  exit code   │   │  ahx <cmd>
+                  exit code   │   │  spin <cmd>
                   + JSON      │   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  AUTHORING  (slash commands — the ONLY model-execution layer)        │
-│  • call ahx for every decision, branch on exit code                  │
+│  • call spin for every decision, branch on exit code                  │
 │  • fan out worker subagents via Task                                  │
 │  • workers write markdown artifact + JSON handoff sidecar            │
 └─────────────────────────────────────────────────────────────────────┘
@@ -78,10 +78,10 @@ and it is forbidden.
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-Deterministic concerns live in `ahx` behind an exit-code ABI. Authoring concerns
+Deterministic concerns live in `spin` behind an exit-code ABI. Authoring concerns
 live in commands via `Task`. `schemas/` is the shared, editable workflow
-definition that both consume. **Every arrow in the protocol — `ahx next` →
-`Task` fan-out → `ahx complete --handoff` → `ahx gate` — is a CLI call a test can
+definition that both consume. **Every arrow in the protocol — `spin next` →
+`Task` fan-out → `spin complete --handoff` → `spin gate` — is a CLI call a test can
 assert.** That is the differentiator: testability is not added on top, it is the
 shape of the architecture.
 
@@ -89,7 +89,7 @@ shape of the architecture.
 
 - **Proposal 1 (Opus)** — the load-bearing keystones: a **CLI-written run-state
   ledger** so gates read filesystem + state (never conversation memory), making
-  them idempotent and crash-safe; and **`ahx complete <id> --handoff out.json`** as
+  them idempotent and crash-safe; and **`spin complete <id> --handoff out.json`** as
   the single point where worker output is validated against a Zod schema *before*
   the artifact counts done.
 - **Proposal 3 (fidelity)** — preserve the roster intact: AgentSpec's specialist
@@ -98,7 +98,7 @@ shape of the architecture.
   intact; the 5 old workflow agents are replaced by 13 typed harness workers —
   65 routed agents in total.) Also: separate the human-facing markdown artifact
   from the machine-facing handoff sidecar the gate evaluates.
-- **Proposal 2 (ergonomics)** — progressive adoption: commands detect `.ahx/` and
+- **Proposal 2 (ergonomics)** — progressive adoption: commands detect `.spindle/` and
   degrade gracefully.
 
 ---
@@ -118,9 +118,9 @@ The OpenSpec `Artifact` schema (`id`, `generates`, `description`, `template`,
 
 | Field | Purpose |
 |---|---|
-| `model` | per-artifact authoring tier hint (`opus`/`sonnet`/`haiku`), surfaced by `ahx next` |
-| `handoff` | path to `schemas/handoffs/<id>.json` — the typed worker-output contract `ahx complete --handoff` enforces |
-| `validate` | declarative structural checks (`md_sections`, `criteria_ids` prefix, `manifest_table` bool) run by `ahx validate` |
+| `model` | per-artifact authoring tier hint (`opus`/`sonnet`/`haiku`), surfaced by `spin next` |
+| `handoff` | path to `schemas/handoffs/<id>.json` — the typed worker-output contract `spin complete --handoff` enforces |
+| `validate` | declarative structural checks (`md_sections`, `criteria_ids` prefix, `manifest_table` bool) run by `spin validate` |
 | `parallel_group` | marks an artifact whose workers fan out as a wave — finally *executes* OpenSpec's `getNextArtifacts` wave instead of only displaying it |
 
 Plus a top-level `config` block (e.g. `build_retry_cap: 3` — caps as **data, not
@@ -129,12 +129,12 @@ prose**) and a `gates` map (`before_design: G_DEFINE`, `before_build: G_DESIGN`,
 
 The same engine drives both `schemas/sdd` and `schemas/kb`, so **KB creation is
 just another artifact graph.** Editing a workflow means editing one YAML plus its
-templates; `ahx schema validate` Zod-checks it (catching cycles and dangling
+templates; `spin schema validate` Zod-checks it (catching cycles and dangling
 `requires` before use).
 
 ### 3.2 Run-state ledger (the crash-safe keystone)
 
-`src/core/run/run-state.ts` performs atomic read/write of **`.ahx/run.json`**: the
+`src/core/run/run-state.ts` performs atomic read/write of **`.spindle/run.json`**: the
 current schema, feature, completed set, retry counters, and gate ledger. It is
 **CLI-written only — never LLM-written.** Every read is validated against a Zod
 `RunState` schema (`run-state.schema.ts`).
@@ -155,13 +155,13 @@ its output file is later touched.
 ### 3.3 The gates
 
 A gate is a pure function `(ctx: GateContext) => GateResult`. It reads filesystem
-and run-state, never conversation. `ahx gate <id>` runs it and maps
+and run-state, never conversation. `spin gate <id>` runs it and maps
 `passed: false` to **exit 1** with JSON `{ gate, passed, reasons, unmet }`.
 
-**Eight gates are invokable via `ahx gate <id>`** (the eight in `registry.ts`
+**Eight gates are invokable via `spin gate <id>`** (the eight in `registry.ts`
 below). **`G_HANDOFF` is not** — it is the validation enforced *inside*
-`ahx complete --handoff` (so it has nowhere to be skipped), listed here for
-completeness. `ahx gate G_HANDOFF` returns "unknown gate".
+`spin complete --handoff` (so it has nowhere to be skipped), listed here for
+completeness. `spin gate G_HANDOFF` returns "unknown gate".
 
 | Gate | When | Blocks if… | Tier |
 |---|---|---|---|
@@ -169,7 +169,7 @@ completeness. `ahx gate G_HANDOFF` returns "unknown gate".
 | `G_DESIGN` | before `/build` | DESIGN missing file-manifest table, OR a manifest row lacks file/action/purpose, OR no Decisions section | — |
 | `G_BUILD` | before `/ship` | **any manifest file not present on disk**, OR criteria-diff(DEFINE, BUILD) non-empty, OR BUILD_REPORT missing | opus-critical |
 | `G_SHIP` | inside `/ship` | `define.criteria` minus `build.passed` is non-empty (unmet acceptance criteria), OR SHIPPED artifact incomplete | — |
-| `G_HANDOFF` | every `ahx complete --handoff` | worker output JSON fails its declared handoff Zod schema | — |
+| `G_HANDOFF` | every `spin complete --handoff` | worker output JSON fails its declared handoff Zod schema | — |
 | `G_KB_STRUCTURE` | during KB authoring | domain dir missing manifest/index/quick-reference, OR zero concept files | — |
 | `G_KB_COVERAGE` | before KB complete | a manifest-declared concept has no file, OR test-cases below configured N | — |
 | `G_ROUTER_COVERAGE` | gen-router, before writing routing.json | any agent frontmatter invalid, OR an agent missing from routing, OR an agent appears more than once (bijection broken) — **no silent skip** | opus-critical |
@@ -191,7 +191,7 @@ known holes: the Python router's `[WARN] Skipping path` silent-skip, and the
 
 A worker produces **two outputs**: a human-facing markdown artifact (e.g.
 `DEFINE.md`) and a machine-facing JSON handoff sidecar (e.g.
-`.ahx/features/<feature>/.handoffs/define.json`). Gates and `ahx complete` trust
+`.spindle/features/<feature>/.handoffs/define.json`). Gates and `spin complete` trust
 the JSON; humans read the markdown. This separation removes the brittleness of
 regex-scraping markdown for a "clarity score."
 
@@ -206,7 +206,7 @@ claim · migration-plan · claudemd-section · kb-concept
 The keystone command is:
 
 ```bash
-ahx complete <id> --handoff <sidecar>
+spin complete <id> --handoff <sidecar>
 ```
 
 This is a **single atomic command**: it validates the handoff JSON against the
@@ -217,7 +217,7 @@ instead of valid JSON cannot be marked complete by hand or by accident. This clo
 the self-marking hole that pure-prose and the "two separate optional steps"
 ergonomic design both reopen.
 
-`ahx handoff-check <schemaId> <file.json>` exposes the same validation
+`spin handoff-check <schemaId> <file.json>` exposes the same validation
 standalone for debugging.
 
 ### 3.5 Model-route policy
@@ -225,14 +225,14 @@ standalone for debugging.
 `src/core/model-route/policy.ts` is a **pure, unit-tested resolver**:
 `taskKind + budget → { tier, model, reason }`. It is consumed two ways — statically
 as the `model:` field per artifact/agent, and dynamically via
-`ahx route <kind> [--budget low|std]`. Full doctrine in §6.
+`spin route <kind> [--budget low|std]`. Full doctrine in §6.
 
 ### 3.6 The CLI
 
-`bin/ahx.js` (`#!/usr/bin/env node` → `import { runCli }`) is the verbatim OpenSpec
+`bin/spin.js` (`#!/usr/bin/env node` → `import { runCli }`) is the verbatim OpenSpec
 bin pattern. `src/cli/index.ts` is the commander root: it registers every
 subcommand and maps `Result` objects to the exit-code ABI, printing JSON to
-stdout. Inside a plugin command, `ahx` is shorthand for:
+stdout. Inside a plugin command, `spin` is shorthand for:
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js <args>
@@ -242,19 +242,19 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js <args>
 
 | Command | Purpose |
 |---|---|
-| `ahx init --schema <sdd\|kb> --feature <slug>` | scaffold `.ahx/`, copy editable schema, create `run.json` |
-| `ahx next` | `{ ready:[{id,model,parallel_group}], blocked:{}, complete:bool }` |
-| `ahx order` | full Kahn build order (inspection/debug) |
-| `ahx state` | print the `run.json` ledger (`completed[]`, `retries{}`, `gates{}`) |
-| `ahx complete <id> [--handoff f.json]` | validate handoff, **then** mark complete; exit 1 if invalid |
-| `ahx validate <id\|path>` | structural checks (md sections / manifest table / criteria IDs); exit 0/1 |
-| `ahx gate <gateId> [--agents d] [--routing f] [--findings f]` | run a named gate; exit 0 pass / 1 BLOCK with `{gate,passed,reasons,unmet}` |
-| `ahx diff-criteria --define f --build f` | set-diff DEFINE criteria vs BUILD passed → `unmet[]` |
-| `ahx handoff-check <schemaId> <file.json>` | standalone handoff validation |
-| `ahx retry <id> --inc \| --ok` | retry counter vs `config.build_retry_cap`; `--ok` exits 1 at ceiling |
-| `ahx route <taskKind> [--budget std\|low]` | `{ tier, model, reason }` |
-| `ahx kinds` | list the known routing task-kinds |
-| `ahx schema show\|validate` | inspect / Zod-validate the active editable schema |
+| `spin init --schema <sdd\|kb> --feature <slug>` | scaffold `.spindle/`, copy editable schema, create `run.json` |
+| `spin next` | `{ ready:[{id,model,parallel_group}], blocked:{}, complete:bool }` |
+| `spin order` | full Kahn build order (inspection/debug) |
+| `spin state` | print the `run.json` ledger (`completed[]`, `retries{}`, `gates{}`) |
+| `spin complete <id> [--handoff f.json]` | validate handoff, **then** mark complete; exit 1 if invalid |
+| `spin validate <id\|path>` | structural checks (md sections / manifest table / criteria IDs); exit 0/1 |
+| `spin gate <gateId> [--agents d] [--routing f] [--findings f]` | run a named gate; exit 0 pass / 1 BLOCK with `{gate,passed,reasons,unmet}` |
+| `spin diff-criteria --define f --build f` | set-diff DEFINE criteria vs BUILD passed → `unmet[]` |
+| `spin handoff-check <schemaId> <file.json>` | standalone handoff validation |
+| `spin retry <id> --inc \| --ok` | retry counter vs `config.build_retry_cap`; `--ok` exits 1 at ceiling |
+| `spin route <taskKind> [--budget std\|low]` | `{ tier, model, reason }` |
+| `spin kinds` | list the known routing task-kinds |
+| `spin schema show\|validate` | inspect / Zod-validate the active editable schema |
 
 **Exit-code ABI (commands branch on this):**
 
@@ -267,10 +267,10 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js <args>
 
 ---
 
-## 4. `.ahx/` on-disk layout
+## 4. `.spindle/` on-disk layout
 
 ```
-.ahx/
+.spindle/
 ├── run.json                                   # the ledger (CLI-written ONLY)
 ├── schema.yaml                                # the active editable workflow
 └── features/<feature>/
@@ -286,7 +286,7 @@ handoff sidecars are evaluated by gates.
 ## 5. The harness protocol
 
 Every workflow command obeys the same five-step loop. Deterministic decisions live
-in `ahx`; authoring lives in workers; control flow branches on exit codes.
+in `spin`; authoring lives in workers; control flow branches on exit codes.
 
 ```
         ┌──────────────────────────────────────────────────────────┐
@@ -294,11 +294,11 @@ in `ahx`; authoring lives in workers; control flow branches on exit codes.
         └──────────────────────────────────────────────────────────┘
                                    │
                                    ▼
-        ① ahx next ──────────────► { ready:[{id, model, parallel_group}], blocked }
+        ① spin next ──────────────► { ready:[{id, model, parallel_group}], blocked }
                                    │
                                    ▼
         ② for each ready artifact:
-             ahx route <kind>  (or use the artifact's model hint)
+             spin route <kind>  (or use the artifact's model hint)
              dispatch a worker via Task on that tier.
              ┌─ same parallel_group → fan out in ONE message ─┐
              │   Task(worker A)   Task(worker B)   Task(C)     │   (true parallel)
@@ -308,31 +308,31 @@ in `ahx`; authoring lives in workers; control flow branches on exit codes.
         ③ worker writes:  <ARTIFACT>.md   +   .handoffs/<id>.json
                                    │
                                    ▼
-        ④ ahx complete <id> --handoff <sidecar>
+        ④ spin complete <id> --handoff <sidecar>
              ├─ exit 0 → artifact counted done in run.json
              └─ exit 1 → handoff INVALID:
-                  ahx retry <id> --inc
-                  ahx retry <id> --ok   (exit 1 at ceiling → STOP)
+                  spin retry <id> --inc
+                  spin retry <id> --ok   (exit 1 at ceiling → STOP)
                   else re-dispatch worker  ← bounded loop, cap is DATA
                                    │
                                    ▼
-        ⑤ ahx gate <gateId>   (for the phase)
+        ⑤ spin gate <gateId>   (for the phase)
              ├─ exit 0 → advance to next phase
              └─ exit 1 → STOP. surface {reasons, unmet}. do not advance.
 ```
 
-1. **`ahx next`** to learn the ready artifact(s) and their model hint.
-2. For each ready artifact, read `ahx route <kind>` (or the artifact's hint) and
+1. **`spin next`** to learn the ready artifact(s) and their model hint.
+2. For each ready artifact, read `spin route <kind>` (or the artifact's hint) and
    dispatch a worker via `Task` on that model. Independent artifacts/files in the
    same `parallel_group` fan out in a **single message** (true parallel).
 3. The worker writes its markdown artifact **and** its JSON handoff sidecar.
-4. **`ahx complete <id> --handoff <sidecar>`.** Exit 1 means the handoff is
-   invalid: re-dispatch, bounded by `ahx retry <id> --inc`, stopping at the
+4. **`spin complete <id> --handoff <sidecar>`.** Exit 1 means the handoff is
+   invalid: re-dispatch, bounded by `spin retry <id> --inc`, stopping at the
    `--ok` ceiling. **NEVER mark complete by hand.**
-5. **`ahx gate <gateId>`** for the phase. Exit 1 → STOP, surface `{reasons,
+5. **`spin gate <gateId>`** for the phase. Exit 1 → STOP, surface `{reasons,
    unmet}`, do not advance. Exit 0 → proceed.
 
-The retry cap is enforced by `ahx retry` against `config.build_retry_cap` in the
+The retry cap is enforced by `spin retry` against `config.build_retry_cap` in the
 schema — a counter in run-state, **not** a prose "max 3" line a model can
 rationalize past. This is the bounded loop done correctly: typed and capped via the
 CLI, with **no `claude -p` and no dispatch** (explicitly correcting the bad ECC
@@ -358,7 +358,7 @@ The default is: **route to the cheapest tier that can *verifiably* do the task.*
    of a CRITICAL finding.** `policy.test.ts` asserts critical kinds never resolve
    below their floor.
 2. **Tier downgrades are free ONLY where a deterministic gate backstops the
-   output.** Haiku does extraction because `ahx validate` catches its mistakes.
+   output.** Haiku does extraction because `spin validate` catches its mistakes.
    `--budget low` shifts authoring Sonnet→Haiku **only where a gate exists**, and
    **NEVER** downgrades the adversary or architect kinds. Critical kinds
    (`adversary`, `architect`, `review-judge`, `*-intent`) never downgrade under any
@@ -373,30 +373,30 @@ where the stakes are high.
 ## 7. E2E test strategy — why it proves correctness
 
 The deliverable test is **`test/e2e/sdd-cycle.e2e.test.ts`**. It drives the full
-five-phase cycle through the **real CLI** (spawning `node bin/ahx.js`
+five-phase cycle through the **real CLI** (spawning `node bin/spin.js`
 subprocesses), simulating the model layer with deterministic fixture files the test
 itself writes — **including one deliberately-broken state** (only 1 of 2 manifest
 files present). No LLM, no network, no mock API. It runs in seconds.
 
 ```
-ahx init --schema sdd
-ahx next                       → assert ready includes `define`
+spin init --schema sdd
+spin next                       → assert ready includes `define`
   write DEFINE fixture + define handoff sidecar
-ahx validate define            → exit 0
-ahx complete define --handoff  → asserts G_HANDOFF passes
-ahx gate G_DEFINE              → exit 0
-ahx next                       → ready: [design]
+spin validate define            → exit 0
+spin complete define --handoff  → asserts G_HANDOFF passes
+spin gate G_DEFINE              → exit 0
+spin next                       → ready: [design]
   write DESIGN with file manifest
-ahx complete design --handoff
-ahx gate G_DESIGN              → exit 0
-ahx next                       → ready: [build]
+spin complete design --handoff
+spin gate G_DESIGN              → exit 0
+spin next                       → ready: [build]
   write ONLY file1 of the manifest          ← the deliberately broken state
-ahx gate G_BUILD               → ASSERT EXIT 1, unmet: [file2]   ◄ proves it BLOCKS
+spin gate G_BUILD               → ASSERT EXIT 1, unmet: [file2]   ◄ proves it BLOCKS
   write file2 + BUILD_REPORT
-ahx gate G_BUILD               → exit 0                          ◄ proves it advances
-ahx diff-criteria              → unmet: []
-ahx gate G_SHIP                → exit 0
-ahx state                      → phase: ship, complete: all
+spin gate G_BUILD               → exit 0                          ◄ proves it advances
+spin diff-criteria              → unmet: []
+spin gate G_SHIP                → exit 0
+spin state                      → phase: ship, complete: all
 ```
 
 **Why this proves correctness and prose cannot.** The test asserts the harness
@@ -434,11 +434,11 @@ work is the seam between them.
 | From | What | How |
 |---|---|---|
 | **OpenSpec** | `graph.ts` (Kahn order), `schema.ts` (loader + cycle detection), `types.ts`, `state.ts` (`detectCompleted`), `outputs.ts` | **Ported verbatim** — confirmed clean, MIT, Zod-validated, cycle-detecting. `types.ts` *extended* with `model`/`handoff`/`validate`/`parallel_group`/`config`/`gates`. |
-| **OpenSpec** | ship mechanics: `package.json` (bin `ahx`, esbuild, vitest), `tsconfig`, `build.js`, `bin/ahx.js`, `vitest.config`, CI | Ported so npx/node install works offline. |
+| **OpenSpec** | ship mechanics: `package.json` (bin `spin`, esbuild, vitest), `tsconfig`, `build.js`, `bin/spin.js`, `vitest.config`, CI | Ported so npx/node install works offline. |
 | **AgentSpec** | 53 specialist agents, 24 KB domains, the whole DE command surface (pipeline/schema/data-quality/data-contract/lakehouse/ai-pipeline), data-engineering-guide skill, `judge.py`, plugin manifest | **Ported intact** — preserves domain depth, the fidelity constraint. The 5 old workflow agents become 13 typed harness workers (`define-worker`, `build-worker`, `_adversary/challenger`, …); 65 routed agents in total. |
 | **AgentSpec** | the SDD workflow itself (`WORKFLOW_CONTRACTS.yaml`, the DEFINE/DESIGN/BUILD/SHIP templates) | Encoded as **data** in `schemas/sdd/schema.yaml` + `templates/`. The brittle parts (`build.md` topo-as-reasoning, prose retry, self-marked checkbox) are *rewritten* into gates. |
 | **ECC** | model-routing doctrine (`policy.ts`), the `_adversary/challenger` role, the `adversarial-gate` / `parallel-fanout` / `bounded-loop` skills | Ported as the **good** ECC patterns — explicitly **NOT** the fake-dispatch / `claude -p` autonomous-agent-harness skill, which is corrected by `bounded-loop`. |
-| **NEW** | the hard seam: `run-state.ts` + ledger, the gate registry + runner, `G_*` gate implementations, `criteria-diff.ts`, `handoff/` schemas + `ahx complete --handoff` enforcement, `model-route/policy.ts`, `schemas/kb`, the rewritten harness-aware commands, the harness-protocol & model-routing skills, the full E2E + grep-guard test suite | This is the testability layer — every CLI call a test can assert. |
+| **NEW** | the hard seam: `run-state.ts` + ledger, the gate registry + runner, `G_*` gate implementations, `criteria-diff.ts`, `handoff/` schemas + `spin complete --handoff` enforcement, `model-route/policy.ts`, `schemas/kb`, the rewritten harness-aware commands, the harness-protocol & model-routing skills, the full E2E + grep-guard test suite | This is the testability layer — every CLI call a test can assert. |
 
 ---
 
@@ -447,7 +447,7 @@ work is the seam between them.
 These are tracked, not solved-and-forgotten:
 
 - **Install reach (highest).** A Claude Code plugin ships markdown and does not
-  auto-run `npm install`, so `ahx` must reach the user's shell. Locked default:
+  auto-run `npm install`, so `spin` must reach the user's shell. Locked default:
   commit prebuilt `dist/` in the plugin and invoke via
   `node "${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js"` (offline, self-contained); a
   `SessionStart` hook runs `node build.js` if `dist/` is missing. `build.js`
@@ -456,14 +456,14 @@ These are tracked, not solved-and-forgotten:
   `bundle-self-contained` job). Building from source (`npm run build`) is the
   documented fallback until an npm/marketplace package is published.
 - **Worker non-compliance.** A subagent may return prose instead of JSON.
-  Mitigated because `ahx complete --handoff` exits 1 on invalid JSON, forcing the
+  Mitigated because `spin complete --handoff` exits 1 on invalid JSON, forcing the
   bounded-loop re-dispatch — but the command body must actually branch on that exit
   code. The harness-protocol skill makes exit-code branching mandatory.
 - **Sidecar drift.** The markdown artifact and the handoff JSON can diverge. Gates
-  trust the JSON; humans read the markdown. `ahx validate` can cross-check that key
+  trust the JSON; humans read the markdown. `spin validate` can cross-check that key
   fields (criteria IDs) appear in both; not fully closed in MVP.
 - **Schema-fork footgun.** Users editing `schema.yaml` can introduce a cycle or
-  dangling `requires`. `ahx schema validate` (and `parseSchema` on every load)
+  dangling `requires`. `spin schema validate` (and `parseSchema` on every load)
   catches it via the ported DFS cycle + dangling-ref checks.
 - **Cost.** Opus on define/design/build-adversary is the default; the adversarial
   + opus-authoring passes dominate spend on large features. `--budget low`
@@ -473,6 +473,6 @@ These are tracked, not solved-and-forgotten:
 ---
 
 *This document is the architecture source of truth. The locked specification is
-`docs/ARCHITECTURE_LOCKED.json`; the `ahx` CLI surface and harness protocol are
+`docs/ARCHITECTURE_LOCKED.json`; the `spin` CLI surface and harness protocol are
 defined in `docs/_authoring_context.md`. When a canonical architectural decision
 changes, update this file.*

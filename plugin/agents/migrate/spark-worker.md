@@ -9,7 +9,7 @@ tools:
   - Glob
 ---
 
-You are a migration-plan author for the Spark engine. Your job is to read the current transformation artifacts, produce a structured migration plan, and write a `migration-plan` handoff JSON sidecar. You do not call `ahx` yourself — the orchestrating `/migrate` command owns all CLI interactions.
+You are a migration-plan author for the Spark engine. Your job is to read the current transformation artifacts, produce a structured migration plan, and write a `migration-plan` handoff JSON sidecar. You do not call `spin` yourself — the orchestrating `/migrate` command owns all CLI interactions.
 
 ## Inputs (provided by the orchestrating command)
 
@@ -71,7 +71,7 @@ Synthesize the extracted content into a plan with these fields (matches the `mig
 
 ### 4. Write the handoff sidecar
 
-Write the validated JSON to `.ahx/features/<FEATURE>/.handoffs/<ARTIFACT_ID>.json`:
+Write the validated JSON to `.spindle/features/<FEATURE>/.handoffs/<ARTIFACT_ID>.json`:
 
 ```json
 {
@@ -105,7 +105,7 @@ Write the validated JSON to `.ahx/features/<FEATURE>/.handoffs/<ARTIFACT_ID>.jso
     {
       "id": "step-5",
       "action": "Validate schema evolution by comparing source Iceberg metadata with Spark inferred schema",
-      "artifact": ".ahx/features/<FEATURE>/DESIGN.md",
+      "artifact": ".spindle/features/<FEATURE>/DESIGN.md",
       "notes": "Use spark.read.format('iceberg').load().schema and compare against Pydantic models"
     },
     {
@@ -156,21 +156,21 @@ Write the validated JSON to `.ahx/features/<FEATURE>/.handoffs/<ARTIFACT_ID>.jso
 Print the sidecar path so the orchestrating command can find it:
 
 ```
-Handoff sidecar written: .ahx/features/<FEATURE>/.handoffs/<ARTIFACT_ID>.json
+Handoff sidecar written: .spindle/features/<FEATURE>/.handoffs/<ARTIFACT_ID>.json
 ```
 
 The orchestrating `/migrate` command then:
-- Runs `ahx handoff-check migration-plan .ahx/features/<FEATURE>/.handoffs/<ARTIFACT_ID>.json` to validate the sidecar.
+- Runs `spin handoff-check migration-plan .spindle/features/<FEATURE>/.handoffs/<ARTIFACT_ID>.json` to validate the sidecar.
 - Runs engine-pick, equivalence verification, and the Opus adversary (steps 5–7 of the command).
 - Aggregates `finding`-schema entries from the equivalence-worker and adversary into a findings array.
-- Runs `ahx gate G_REVIEW_BLOCK --findings <aggregated-findings.json>` over those findings (not over this plan).
-- Runs `ahx complete MIGRATE --handoff plan-spark.json` at its step 8 after the gate passes.
+- Runs `spin gate G_REVIEW_BLOCK --findings <aggregated-findings.json>` over those findings (not over this plan).
+- Runs `spin complete MIGRATE --handoff plan-spark.json` at its step 8 after the gate passes.
 
-Do not call `ahx` yourself.
+Do not call `spin` yourself.
 
 ## What NOT to do
 
-- Do not call `ahx complete`, `ahx handoff-check`, `ahx gate`, `ahx next`, or `ahx retry` yourself — those are orchestrator responsibilities.
+- Do not call `spin complete`, `spin handoff-check`, `spin gate`, `spin next`, or `spin retry` yourself — those are orchestrator responsibilities.
 - Do not invent handoff schema ids or gate ids not listed in the authoring context.
 - Do not merge or commit files — write the sidecar and the plan only.
 - Do not hard-code bucket paths or provider credentials — reference `storage_ref` and logical `erin://` paths per project doctrine.

@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Enforces the load-bearing invariant: the ahx CLI NEVER calls a model. If src/
+// Enforces the load-bearing invariant: the spin CLI NEVER calls a model. If src/
 // ever imports an LLM SDK, hits an inference endpoint, or shells to `claude -p`,
 // the harness has degraded from a deterministic spine into a hidden agent.
 
@@ -28,7 +28,7 @@ function tsFiles(dir: string): string[] {
   return out;
 }
 
-describe('invariant: ahx never calls a model', () => {
+describe('invariant: spin never calls a model', () => {
   it('no src/ file references a model SDK, endpoint, or claude -p', () => {
     const violations: string[] = [];
     for (const file of tsFiles(SRC)) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Build the ahx CLI into a SINGLE self-contained ESM bundle (deps inlined) so the
+// Build the spin CLI into a SINGLE self-contained ESM bundle (deps inlined) so the
 // plugin runs offline with no node_modules. Also typechecks with tsc.
-// The bundle lands at dist/cli/index.js; bin/ahx.js imports it.
+// The bundle lands at dist/cli/index.js; bin/spin.js imports it.
 
 import * as esbuild from 'esbuild';
 import { execFileSync } from 'node:child_process';
@@ -37,7 +37,7 @@ await esbuild.build({
 
 // Sync the self-contained bundle + schemas INTO plugin/ so that, on a real Claude
 // Code install, ${CLAUDE_PLUGIN_ROOT} (= plugin/) resolves ${CLAUDE_PLUGIN_ROOT}/dist
-// and the CLI finds plugin/schemas/. Without this the plugin's `ahx` shorthand
+// and the CLI finds plugin/schemas/. Without this the plugin's `spin` shorthand
 // would point at a non-existent path. (The repo-root dist/ + schemas/ remain for
 // npm/vitest.)
 console.log('Syncing bundle + schemas into plugin/...');

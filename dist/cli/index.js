@@ -20185,7 +20185,7 @@ var ArtifactSchema = external_exports.object({
   template: external_exports.string().optional(),
   instruction: external_exports.string().optional(),
   requires: external_exports.array(external_exports.string()).default([]),
-  // --- ahx extensions ---
+  // --- spin extensions ---
   model: ModelTier.optional(),
   handoff: external_exports.string().optional(),
   parallel_group: external_exports.string().optional(),
@@ -20446,7 +20446,7 @@ var RunStateSchema = external_exports.object({
 });
 
 // src/core/run/run-state.ts
-var RUN_DIR = ".ahx";
+var RUN_DIR = ".spindle";
 var RUN_FILE = "run.json";
 var SCHEMA_FILE = "schema.yaml";
 function runFilePath(root) {
@@ -20483,7 +20483,7 @@ function runStateExists(root) {
 function loadRunState(root) {
   const file = runFilePath(root);
   if (!fs4.existsSync(file)) {
-    throw new RunStateError(`No run state at ${file}. Run "ahx init" first.`);
+    throw new RunStateError(`No run state at ${file}. Run "spin init" first.`);
   }
   let parsed;
   try {
@@ -21186,7 +21186,7 @@ var TASK_KINDS = {
   "file-read": { tier: "haiku", floor: "haiku", downgradable: false, reason: "mechanical read" },
   "structure-extract": { tier: "haiku", floor: "haiku", downgradable: false, reason: "mechanical extraction, gate-validated" },
   "frontmatter-parse": { tier: "haiku", floor: "haiku", downgradable: false, reason: "parse, G_ROUTER_COVERAGE validates" },
-  "template-fill": { tier: "haiku", floor: "haiku", downgradable: false, reason: "fill a template, ahx validate checks" },
+  "template-fill": { tier: "haiku", floor: "haiku", downgradable: false, reason: "fill a template, spin validate checks" },
   "format-convert": { tier: "haiku", floor: "haiku", downgradable: false, reason: "mechanical conversion" },
   "claim-extract": { tier: "haiku", floor: "haiku", downgradable: false, reason: "extraction, claim handoff validated" },
   "ship-prose": { tier: "haiku", floor: "haiku", downgradable: false, reason: "archive prose, G_SHIP already passed in code" },
@@ -21284,11 +21284,11 @@ function initHandler(root, opts) {
   return ok({ initialized: true, schema: schemaName, feature, runState: state });
 }
 function stateHandler(root) {
-  if (!runStateExists(root)) return usage('no run state \u2014 run "ahx init" first');
+  if (!runStateExists(root)) return usage('no run state \u2014 run "spin init" first');
   return ok(loadRunState(root));
 }
 function nextHandler(root) {
-  if (!runStateExists(root)) return usage('no run state \u2014 run "ahx init" first');
+  if (!runStateExists(root)) return usage('no run state \u2014 run "spin init" first');
   const graph = activeGraph(root);
   const completed = effectiveCompleted(root, graph);
   const ready = graph.getNextArtifacts(completed).map((id) => {
@@ -21304,11 +21304,11 @@ function nextHandler(root) {
   });
 }
 function orderHandler(root) {
-  if (!runStateExists(root)) return usage('no run state \u2014 run "ahx init" first');
+  if (!runStateExists(root)) return usage('no run state \u2014 run "spin init" first');
   return ok({ order: activeGraph(root).getBuildOrder() });
 }
 function completeHandler(root, id, opts) {
-  if (!runStateExists(root)) return usage('no run state \u2014 run "ahx init" first');
+  if (!runStateExists(root)) return usage('no run state \u2014 run "spin init" first');
   const graph = activeGraph(root);
   const artifact = graph.getArtifact(id);
   if (!artifact) return usage(`unknown artifact "${id}"`);
@@ -21335,7 +21335,7 @@ function completeHandler(root, id, opts) {
   return ok({ completed: id, runState: state });
 }
 function validateHandler(root, idOrPath) {
-  if (!runStateExists(root)) return usage('no run state \u2014 run "ahx init" first');
+  if (!runStateExists(root)) return usage('no run state \u2014 run "spin init" first');
   const graph = activeGraph(root);
   const state = loadRunState(root);
   const artifact = graph.getArtifact(idOrPath);
@@ -21392,7 +21392,7 @@ function diffCriteriaHandler(root, opts) {
     build = JSON.parse(fs11.readFileSync(buildPath, "utf-8"));
   } catch {
     return usage(
-      "diff-criteria expects the JSON handoff sidecars (.ahx/.../.handoffs/define.json and build.json), not the markdown artifacts"
+      "diff-criteria expects the JSON handoff sidecars (.spindle/.../.handoffs/define.json and build.json), not the markdown artifacts"
     );
   }
   const passed = (build.results ?? []).filter((r) => r.status === "passed").map((r) => r.criterion);
@@ -21404,7 +21404,7 @@ function handoffCheckHandler(schemaId, file) {
   return check.ok ? ok(check) : blocked(check);
 }
 function retryHandler(root, id, opts) {
-  if (!runStateExists(root)) return usage('no run state \u2014 run "ahx init" first');
+  if (!runStateExists(root)) return usage('no run state \u2014 run "spin init" first');
   const graph = activeGraph(root);
   const cap = graph.getSchema().config?.build_retry_cap ?? 3;
   if (opts.inc) {
@@ -21425,12 +21425,12 @@ function routeHandler(kind, opts) {
 function schemaHandler(root, action) {
   const schemaPath = runStateExists(root) ? schemaCopyPath(root) : null;
   if (action === "show") {
-    if (!schemaPath || !fs11.existsSync(schemaPath)) return usage('no active schema \u2014 run "ahx init"');
+    if (!schemaPath || !fs11.existsSync(schemaPath)) return usage('no active schema \u2014 run "spin init"');
     return ok(loadSchema(schemaPath));
   }
   if (action === "validate") {
     const target = schemaPath && fs11.existsSync(schemaPath) ? schemaPath : null;
-    if (!target) return usage('no active schema to validate \u2014 run "ahx init"');
+    if (!target) return usage('no active schema to validate \u2014 run "spin init"');
     try {
       parseSchema(fs11.readFileSync(target, "utf-8"));
       return ok({ valid: true, schema: target });
@@ -21453,7 +21453,7 @@ async function runCli(argv, write = (chunk) => process.stdout.write(chunk)) {
   };
   const rootOf = (opts) => opts.root ?? process.cwd();
   const program2 = new Command();
-  program2.name("ahx").description("AgentSpec Harness \u2014 deterministic spec-driven orchestration spine").version("0.1.0").option("--root <dir>", "project root containing .ahx/ (default: cwd)").enablePositionalOptions();
+  program2.name("spin").description("AgentSpec Harness \u2014 deterministic spec-driven orchestration spine").version("0.1.0").option("--root <dir>", "project root containing .spindle/ (default: cwd)").enablePositionalOptions();
   const root = (cmd) => rootOf(cmd.optsWithGlobals());
   program2.command("init").option("--schema <name>", "workflow schema (sdd | kb)", "sdd").option("--feature <slug>", "feature slug", "feature").action(function(opts) {
     emit(initHandler(root(this), opts));

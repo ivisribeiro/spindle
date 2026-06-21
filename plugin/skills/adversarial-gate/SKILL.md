@@ -1,6 +1,6 @@
 ---
 name: adversarial-gate
-description: Adversarial verification pattern — dispatch N independent critics that try to REFUTE an artifact (anti-anchoring, no shared context), aggregate their findings into one `finding` handoff, then `ahx gate G_REVIEW_BLOCK` blocks on any surviving CRITICAL under a hard round cap. Use when a CRITICAL artifact (spec, design, code, claim) must survive challenge before it advances, not just pass a single self-review.
+description: Adversarial verification pattern — dispatch N independent critics that try to REFUTE an artifact (anti-anchoring, no shared context), aggregate their findings into one `finding` handoff, then `spin gate G_REVIEW_BLOCK` blocks on any surviving CRITICAL under a hard round cap. Use when a CRITICAL artifact (spec, design, code, claim) must survive challenge before it advances, not just pass a single self-review.
 ---
 
 # Adversarial gate
@@ -11,7 +11,7 @@ whose job is to break the artifact**, then lets the deterministic gate
 produce typed evidence.
 
 The `adversary` task-kind IS the implementation here — it is an OPUS-tier critic
-(`ahx route adversary`) and, per the routing doctrine, **never downgrades** (the
+(`spin route adversary`) and, per the routing doctrine, **never downgrades** (the
 verifier outranks-or-equals the generator on a CRITICAL gate). `G_REVIEW_BLOCK`
 is the gate: surviving CRITICAL findings > 0 ⇒ BLOCK.
 
@@ -30,18 +30,18 @@ is the gate: surviving CRITICAL findings > 0 ⇒ BLOCK.
    findings, not your summary.
 4. **Severity rule, gate-owned.** You do NOT decide pass/block yourself. You
    aggregate every critic's items into ONE `finding` handoff and hand it to
-   `ahx gate G_REVIEW_BLOCK`, then branch on its exit code. The gate owns the
+   `spin gate G_REVIEW_BLOCK`, then branch on its exit code. The gate owns the
    verdict: any surviving CRITICAL finding ⇒ BLOCK.
 5. **Hard cap on rounds.** Refute → fix → re-challenge is bounded by
-   `ahx retry <id>`; stop at the `--ok` ceiling. No infinite adversarial loops.
+   `spin retry <id>`; stop at the `--ok` ceiling. No infinite adversarial loops.
 
 ## Procedure
 
 ### 1. Confirm the target is ready and route the critic tier
 
 ```bash
-ahx next                 # the artifact under challenge must be in ready[]
-ahx route adversary      # -> OPUS tier; the critic model. NEVER downgrade this.
+spin next                 # the artifact under challenge must be in ready[]
+spin route adversary      # -> OPUS tier; the critic model. NEVER downgrade this.
 ```
 
 ### 2. Fan out N independent critics in ONE message (true parallel)
@@ -55,7 +55,7 @@ CRITICAL is enough to BLOCK; the gate does not need a quorum.
 Each critic worker MUST:
 - attempt to refute the artifact, focusing on CRITICAL defects;
 - write its result as a `finding` JSON sidecar to
-  `.ahx/features/<feature>/.handoffs/<criticId>.json`, shaped
+  `.spindle/features/<feature>/.handoffs/<criticId>.json`, shaped
   `{ "findings": [ … ] }` where each item is
   `{ file, severity, rule, message, source }` (`line` optional) and `severity ∈
   critical | high | medium | low`. A critic that finds the CRITICAL flaw emits an
@@ -67,7 +67,7 @@ Before aggregating, prove each critic's sidecar is a structurally valid `finding
 — never trust prose:
 
 ```bash
-ahx handoff-check finding .ahx/features/<feature>/.handoffs/<criticId>.json
+spin handoff-check finding .spindle/features/<feature>/.handoffs/<criticId>.json
 ```
 
 Exit `1` ⇒ that sidecar is malformed (not a valid `finding`): re-dispatch that
@@ -83,10 +83,10 @@ items into one aggregated file, then point the gate at that file:
 ```bash
 # Merge all critics' findings[] arrays into one finding handoff.
 jq -s '{ findings: map(.findings) | add }' \
-  .ahx/features/<feature>/.handoffs/critic-*.json \
-  > .ahx/features/<feature>/.handoffs/findings.json
+  .spindle/features/<feature>/.handoffs/critic-*.json \
+  > .spindle/features/<feature>/.handoffs/findings.json
 
-ahx gate G_REVIEW_BLOCK --findings .ahx/features/<feature>/.handoffs/findings.json
+spin gate G_REVIEW_BLOCK --findings .spindle/features/<feature>/.handoffs/findings.json
 ```
 
 Branch strictly on the exit code:
@@ -103,8 +103,8 @@ and re-challenge with a FRESH, independent panel (step 2). The cap powers the
 loop:
 
 ```bash
-ahx retry <id> --inc     # one charge per re-challenge round
-ahx retry <id> --ok      # exit 1 == ceiling hit (config.build_retry_cap)
+spin retry <id> --inc     # one charge per re-challenge round
+spin retry <id> --ok      # exit 1 == ceiling hit (config.build_retry_cap)
 ```
 
 When `--ok` exits `1`, STOP. Do not advance and do not re-run the panel. Report
@@ -118,16 +118,16 @@ proceeds.
   critic B. That destroys independence (rule 1); always separate Task dispatches
   seeing only the artifact.
 - **You decide the verdict** — eyeballing the findings and declaring the artifact
-  "fine." The surviving-CRITICAL verdict is `ahx gate G_REVIEW_BLOCK`'s job;
+  "fine." The surviving-CRITICAL verdict is `spin gate G_REVIEW_BLOCK`'s job;
   aggregate the findings, run the gate, and branch on its exit code only.
 - **Directory as `--findings`** — pointing the gate at the `.handoffs/` folder
   instead of one aggregated `findings.json`. The gate `JSON.parse`s a single
   file; a directory path throws and always BLOCKs. Aggregate first (step 4).
-- **Cheaper final judge** — routing the critic below `ahx route adversary` to
+- **Cheaper final judge** — routing the critic below `spin route adversary` to
   save budget. Critical kinds never downgrade; the verifier must outrank-or-equal
   the generator on a CRITICAL gate.
-- **Unbounded re-challenge** — looping fix→re-review without `ahx retry --inc` /
+- **Unbounded re-challenge** — looping fix→re-review without `spin retry --inc` /
   `--ok`. The round cap is mandatory.
 - **Prose verdicts** — accepting a critic's "looks good" without a typed
-  `finding` sidecar. No `finding` JSON that passes `ahx handoff-check finding`,
+  `finding` sidecar. No `finding` JSON that passes `spin handoff-check finding`,
   no vote.

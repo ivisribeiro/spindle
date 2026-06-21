@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { loadSchema } from '../../../src/core/artifact-graph/schema.js';
 
 // Guards against shipping a malformed bundled workflow schema (e.g. an unquoted
-// colon in a description, or a dependency cycle). `ahx init --schema <x>` loads
+// colon in a description, or a dependency cycle). `spin init --schema <x>` loads
 // these, so a bad one breaks the whole workflow — this test catches it in CI.
 
 const SCHEMAS_DIR = path.resolve(

@@ -7,9 +7,9 @@ description: Phase 3 — execute the build. Fan out per-file build workers in tr
 
 Turn the approved design manifest into code. The CLI owns every ordering,
 validation, retry, and gate decision; this command only dispatches workers and
-branches on `ahx` exit codes.
+branches on `spin` exit codes.
 
-`ahx` shorthand = `node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js`.
+`spin` shorthand = `node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js`.
 
 Exit-code ABI you branch on: `0` pass · `1` gate blocked / handoff invalid ·
 `2` usage error · `3` internal error.
@@ -27,7 +27,7 @@ Exit-code ABI you branch on: `0` pass · `1` gate blocked / handoff invalid ·
 Never start building on an unapproved design. Gate before anything else:
 
 ```bash
-ahx gate G_DESIGN
+spin gate G_DESIGN
 ```
 
 - exit `1` → **STOP**. Surface `{gate, passed, reasons, unmet}` verbatim. The
@@ -40,7 +40,7 @@ ahx gate G_DESIGN
 ## 2. Ask the CLI what's ready
 
 ```bash
-ahx next
+spin next
 ```
 
 Returns `{ ready:[{id,model,parallel_group}], blocked:{}, complete:bool }`.
@@ -51,10 +51,10 @@ If `complete` is already `true`, skip to step 5 (gate). Otherwise read the
 design handoff manifest to enumerate the files/layers to build.
 
 ```bash
-ahx validate design
+spin validate design
 ```
 
-Read `.ahx/features/<feature>/DESIGN.md` and its `.handoffs/design.json`
+Read `.spindle/features/<feature>/DESIGN.md` and its `.handoffs/design.json`
 manifest. Each manifest row is one build unit: a target file (or layer) with its
 contract. That row-set is the worker fan-out list.
 
@@ -66,7 +66,7 @@ For the build task-kind, confirm the tier (the ready hint says `sonnet`; this
 agrees with routing):
 
 ```bash
-ahx route code-build
+spin route code-build
 ```
 
 Then dispatch **one `build-worker` subagent per manifest file/layer**, all in a
@@ -79,7 +79,7 @@ Each `build-worker` (model: **sonnet**, task-kind: **code-build**) must:
    manifest — nothing outside its slice.
 2. Write the actual source file(s) to disk.
 3. Write a `build-task` JSON handoff sidecar to
-   `.ahx/features/<feature>/.handoffs/<id>.json` describing what it produced
+   `.spindle/features/<feature>/.handoffs/<id>.json` describing what it produced
    (the file(s) written + which DEFINE criteria its slice satisfies).
 
 Do not narrate the build in prose as a substitute for the file — the file on
@@ -93,7 +93,7 @@ For every returned `build-task` handoff, validate it through the CLI — never
 mark anything complete by hand:
 
 ```bash
-ahx complete <id> --handoff .ahx/features/<feature>/.handoffs/<id>.json
+spin complete <id> --handoff .spindle/features/<feature>/.handoffs/<id>.json
 ```
 
 - exit `0` → that build unit is recorded in the ledger. Move on.
@@ -102,30 +102,30 @@ ahx complete <id> --handoff .ahx/features/<feature>/.handoffs/<id>.json
 
 ```bash
 # count this failed attempt against config.build_retry_cap
-ahx retry <id> --inc
+spin retry <id> --inc
 # check the ceiling — exit 1 means we've hit the cap
-ahx retry <id> --ok
+spin retry <id> --ok
 ```
 
 Loop semantics (the cap lives in `config.build_retry_cap`, enforced by the CLI):
 
-- `ahx retry <id> --inc` increments the attempt counter.
-- `ahx retry <id> --ok` exits `0` while there's headroom, exits `1` at the
+- `spin retry <id> --inc` increments the attempt counter.
+- `spin retry <id> --ok` exits `0` while there's headroom, exits `1` at the
   ceiling.
 - While `--ok` is `0`: re-dispatch that single `build-worker` (sonnet,
   code-build) with the failure reasons, get a fresh file + `build-task`
-  sidecar, and re-run `ahx complete <id> --handoff …`.
+  sidecar, and re-run `spin complete <id> --handoff …`.
 - When `--ok` exits `1`: **STOP retrying that unit.** Do not fake completion —
   surface the unresolved failure to the user. A unit that never passes
-  `ahx complete` will leave `G_BUILD` red, which is the correct outcome.
+  `spin complete` will leave `G_BUILD` red, which is the correct outcome.
 
-Re-run `ahx next` after the group drains to confirm there's nothing left ready.
+Re-run `spin next` after the group drains to confirm there's nothing left ready.
 
 ---
 
 ## 5. Aggregate the build-report handoff and complete the phase
 
-Once every build unit has passed `ahx complete`, assemble the phase-level
+Once every build unit has passed `spin complete`, assemble the phase-level
 `build-report` handoff:
 
 ```json
@@ -136,7 +136,7 @@ Once every build unit has passed `ahx complete`, assemble the phase-level
     { "criterion": "AC-2", "status": "passed" }
   ],
   "files_written": [
-    ".ahx/features/<feature>/.handoffs/<id>.json",
+    ".spindle/features/<feature>/.handoffs/<id>.json",
     "<each real source file produced by the workers>"
   ]
 }
@@ -147,11 +147,11 @@ Once every build unit has passed `ahx complete`, assemble the phase-level
 the BUILD_REPORT, then complete the build artifact through the CLI:
 
 ```bash
-ahx complete build --handoff .ahx/features/<feature>/.handoffs/build-report.json
+spin complete build --handoff .spindle/features/<feature>/.handoffs/build-report.json
 ```
 
 - exit `1` → the `build-report` failed its schema (the `G_HANDOFF` check inside
-  `ahx complete`). Fix the report shape and retry. Do not advance.
+  `spin complete`). Fix the report shape and retry. Do not advance.
 - exit `0` → the phase artifact is recorded.
 
 ---
@@ -163,7 +163,7 @@ that every manifest file exists on disk, the criteria-diff is empty, and the
 BUILD_REPORT exists:
 
 ```bash
-ahx gate G_BUILD
+spin gate G_BUILD
 ```
 
 - exit `1` → **STOP.** Surface `{gate, passed, reasons, unmet}` verbatim. The
@@ -171,13 +171,13 @@ ahx gate G_BUILD
   the missing manifest files). For criteria gaps, you can inspect the raw diff:
 
   ```bash
-  ahx diff-criteria --define .ahx/features/<feature>/.handoffs/define.json \
-                     --build .ahx/features/<feature>/.handoffs/build-report.json
+  spin diff-criteria --define .spindle/features/<feature>/.handoffs/define.json \
+                     --build .spindle/features/<feature>/.handoffs/build-report.json
   ```
 
   Fix the cause — re-dispatch the relevant `build-worker`(s) for the unmet
-  slice (bounded again by `ahx retry <id> --inc` / `--ok`), re-aggregate the
-  `build-report`, then **re-gate** with `ahx gate G_BUILD`. Iterate until green.
+  slice (bounded again by `spin retry <id> --inc` / `--ok`), re-aggregate the
+  `build-report`, then **re-gate** with `spin gate G_BUILD`. Iterate until green.
   Never advance on a red gate.
 
 - exit `0` → build is verifiably done. Hand off to **`/ship`** (Phase 4).
@@ -186,12 +186,12 @@ ahx gate G_BUILD
 
 ## Invariants for this command
 
-- `ahx` never calls a model; this command is the only place a model runs.
-- Workers author; `ahx` decides. Branch strictly on exit codes.
-- Never mark a build unit or the phase complete by hand — only `ahx complete`
+- `spin` never calls a model; this command is the only place a model runs.
+- Workers author; `spin` decides. Branch strictly on exit codes.
+- Never mark a build unit or the phase complete by hand — only `spin complete`
   records completion, only `G_BUILD` clears the phase.
 - The retry loop is bounded by `config.build_retry_cap` via
-  `ahx retry <id> --inc | --ok`; there is no prose "max N retries".
+  `spin retry <id> --inc | --ok`; there is no prose "max N retries".
 - Fan out the whole `by_manifest_layer` group in a single Task message.
-- Use only the `ahx` commands, gates (`G_DESIGN`, `G_BUILD`, `G_HANDOFF`), and
+- Use only the `spin` commands, gates (`G_DESIGN`, `G_BUILD`, `G_HANDOFF`), and
   handoff ids (`design`, `build-task`, `build-report`, `define`) named here.

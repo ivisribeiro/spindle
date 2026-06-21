@@ -13,7 +13,7 @@ function ctxFor(findings: unknown): GateContext {
 }
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), 'ahx-review-'));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'spin-review-'));
 });
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 

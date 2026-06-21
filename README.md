@@ -1,13 +1,13 @@
-# agentspec-harness
+# spindle
 
-**AgentSpec made harness-native** — a Claude Code plugin that turns the AgentSpec SDD cycle (Brainstorm → Define → Design → Build → Ship) into a deterministic, gate-backed workflow where `ahx` is the spine and Claude is the worker.
+**AgentSpec made harness-native** — a Claude Code plugin that turns the AgentSpec SDD cycle (Brainstorm → Define → Design → Build → Ship) into a deterministic, gate-backed workflow where `spin` is the spine and Claude is the worker.
 
 ---
 
 ## The hard-seam doctrine
 
 ```
-ahx  ─── deterministic spine ───  never calls a model
+spin  ─── deterministic spine ───  never calls a model
                 │
           exit code (0/1/2/3)
                 │
@@ -17,9 +17,9 @@ ahx  ─── deterministic spine ───  never calls a model
          spawned via Task tool
 ```
 
-`ahx` is a pure state machine: it reads `.ahx/run.json`, applies Kahn ordering, validates handoffs against JSON schemas, enforces gates, and exits with a code. It never touches an inference endpoint. The slash commands (`/brainstorm`, `/define`, `/design`, `/build`, `/ship`, `/review`, `/migrate`) are the only place a model runs — they call `ahx` for every ordering, validation, and gate decision, then branch strictly on the exit code.
+`spin` is a pure state machine: it reads `.spindle/run.json`, applies Kahn ordering, validates handoffs against JSON schemas, enforces gates, and exits with a code. It never touches an inference endpoint. The slash commands (`/brainstorm`, `/define`, `/design`, `/build`, `/ship`, `/review`, `/migrate`) are the only place a model runs — they call `spin` for every ordering, validation, and gate decision, then branch strictly on the exit code.
 
-**Fake-dispatch anti-pattern (never do this):** dispatching a model from Node, calling `ahx` to "help" an LLM decide, or advancing state without `ahx complete --handoff`. Every gate is an exit code. Every state change is written by `ahx`, not by Claude.
+**Fake-dispatch anti-pattern (never do this):** dispatching a model from Node, calling `spin` to "help" an LLM decide, or advancing state without `spin complete --handoff`. Every gate is an exit code. Every state change is written by `spin`, not by Claude.
 
 ---
 
@@ -28,8 +28,8 @@ ahx  ─── deterministic spine ───  never calls a model
 ### Option A — Claude Code plugin (local, works today)
 
 ```bash
-git clone https://github.com/ivisribeiro/agentspec-harness.git
-claude --plugin-dir ./agentspec-harness/plugin
+git clone https://github.com/ivisribeiro/spindle.git
+claude --plugin-dir ./spindle/plugin
 ```
 
 `plugin/` ships the prebuilt, self-contained `dist/cli/index.js` (deps inlined,
@@ -40,14 +40,14 @@ All commands invoke the CLI as:
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js <args>
 ```
 
-The documented shorthand throughout this README is `ahx <args>`.
+The documented shorthand throughout this README is `spin <args>`.
 
 ### Option B — build from source / use the CLI directly
 
 ```bash
-git clone https://github.com/ivisribeiro/agentspec-harness.git
-cd agentspec-harness && npm install && npm run build
-node bin/ahx.js <args>      # the `ahx` CLI
+git clone https://github.com/ivisribeiro/spindle.git
+cd spindle && npm install && npm run build
+node bin/spin.js <args>      # the `spin` CLI
 ```
 
 > Marketplace install (`claude plugin add …`) and an `npx` package are planned
@@ -63,18 +63,18 @@ Copy `dist/` into your project and invoke `node dist/cli/index.js` directly. Pin
 
 | Command | What it does | Exit codes |
 |---|---|---|
-| `ahx init --schema <sdd\|kb> --feature <slug>` | Scaffold `.ahx/`, copy editable schema to `.ahx/schema.yaml`, create `run.json` | 0 / 2 |
-| `ahx next` | Returns `{ ready:[{id,model,parallel_group}], blocked:{}, complete:bool }` — the ready artifact queue | 0 |
-| `ahx order` | Full Kahn build order for the active schema | 0 |
-| `ahx state` | Print the `run.json` ledger (`completed[]`, `retries{}`, `gates{}`) | 0 |
-| `ahx complete <id> [--handoff f.json]` | Validate the worker handoff against the artifact's schema, then mark complete. **exit 1 if invalid** | 0 / 1 |
-| `ahx validate <id\|path>` | Structural checks (MD sections / manifest table / criteria IDs) | 0 / 1 |
-| `ahx gate <gateId> [--agents d] [--routing f] [--findings f]` | Run a named gate. exit 0 = pass, exit 1 = BLOCK with `{gate,passed,reasons,unmet}` | 0 / 1 |
-| `ahx diff-criteria --define f --build f` | Set-diff DEFINE criteria vs BUILD passed → `unmet[]` | 0 / 1 |
-| `ahx handoff-check <schemaId> <file.json>` | Standalone handoff validation | 0 / 1 |
-| `ahx retry <id> --inc \| --ok` | Retry counter vs `config.build_retry_cap`. `--ok` exits 1 at ceiling | 0 / 1 |
-| `ahx route <taskKind> [--budget std\|low]` | Returns `{ tier, model, reason }` for a task kind | 0 |
-| `ahx schema show\|validate` | Inspect or validate the active editable schema | 0 / 1 |
+| `spin init --schema <sdd\|kb> --feature <slug>` | Scaffold `.spindle/`, copy editable schema to `.spindle/schema.yaml`, create `run.json` | 0 / 2 |
+| `spin next` | Returns `{ ready:[{id,model,parallel_group}], blocked:{}, complete:bool }` — the ready artifact queue | 0 |
+| `spin order` | Full Kahn build order for the active schema | 0 |
+| `spin state` | Print the `run.json` ledger (`completed[]`, `retries{}`, `gates{}`) | 0 |
+| `spin complete <id> [--handoff f.json]` | Validate the worker handoff against the artifact's schema, then mark complete. **exit 1 if invalid** | 0 / 1 |
+| `spin validate <id\|path>` | Structural checks (MD sections / manifest table / criteria IDs) | 0 / 1 |
+| `spin gate <gateId> [--agents d] [--routing f] [--findings f]` | Run a named gate. exit 0 = pass, exit 1 = BLOCK with `{gate,passed,reasons,unmet}` | 0 / 1 |
+| `spin diff-criteria --define f --build f` | Set-diff DEFINE criteria vs BUILD passed → `unmet[]` | 0 / 1 |
+| `spin handoff-check <schemaId> <file.json>` | Standalone handoff validation | 0 / 1 |
+| `spin retry <id> --inc \| --ok` | Retry counter vs `config.build_retry_cap`. `--ok` exits 1 at ceiling | 0 / 1 |
+| `spin route <taskKind> [--budget std\|low]` | Returns `{ tier, model, reason }` for a task kind | 0 |
+| `spin schema show\|validate` | Inspect or validate the active editable schema | 0 / 1 |
 
 **Exit-code ABI:** `0` = pass · `1` = gate blocked / handoff invalid · `2` = usage error · `3` = internal error
 
@@ -82,7 +82,7 @@ Copy `dist/` into your project and invoke `node dist/cli/index.js` directly. Pin
 
 ## Gates
 
-Gates are run via `ahx gate <id>`. A command that receives exit 1 surfaces `{gate, passed, reasons, unmet}` and stops — it does not advance the phase.
+Gates are run via `spin gate <id>`. A command that receives exit 1 surfaces `{gate, passed, reasons, unmet}` and stops — it does not advance the phase.
 
 | Gate ID | Fires before | Checks |
 |---|---|---|
@@ -94,13 +94,13 @@ Gates are run via `ahx gate <id>`. A command that receives exit 1 surfaces `{gat
 | `G_KB_COVERAGE` | KB publish | KB coverage checks |
 | `G_ROUTER_COVERAGE` | router validate | Agent→routing bijection, no silent skips |
 | `G_REVIEW_BLOCK` | `/review` · `/migrate` ship | Surviving CRITICAL findings > 0 → block |
-| `G_HANDOFF` | (enforced inside `ahx complete --handoff`) | Handoff JSON matches declared schema |
+| `G_HANDOFF` | (enforced inside `spin complete --handoff`) | Handoff JSON matches declared schema |
 
 ---
 
 ## Handoff schema IDs
 
-Workers write a JSON sidecar matching one of these schema IDs; the slash command passes it to `ahx complete --handoff <sidecar>`.
+Workers write a JSON sidecar matching one of these schema IDs; the slash command passes it to `spin complete --handoff <sidecar>`.
 
 `define` · `design` · `build-task` · `build-report` · `finding` · `claim` · `migration-plan` · `claudemd-section` · `kb-concept`
 
@@ -108,7 +108,7 @@ Workers write a JSON sidecar matching one of these schema IDs; the slash command
 
 ## Model routing
 
-`ahx route <taskKind>` returns the right tier. Commands use this to pick which model to dispatch each worker on.
+`spin route <taskKind>` returns the right tier. Commands use this to pick which model to dispatch each worker on.
 
 | Tier | Task kinds |
 |---|---|
@@ -125,17 +125,17 @@ Workers write a JSON sidecar matching one of these schema IDs; the slash command
 ### 1. Initialise
 
 ```bash
-ahx init --schema sdd --feature payments-reconciliation
+spin init --schema sdd --feature payments-reconciliation
 ```
 
-Creates `.ahx/`, `.ahx/run.json`, `.ahx/schema.yaml` (your editable copy), and `.ahx/features/payments-reconciliation/`.
+Creates `.spindle/`, `.spindle/run.json`, `.spindle/schema.yaml` (your editable copy), and `.spindle/features/payments-reconciliation/`.
 
 ### 2. Brainstorm
 
-Run `/brainstorm`. The command calls `ahx next` to get the ready artifact, dispatches a SONNET worker via Task, the worker writes `BRAINSTORM.md` + a `define` handoff sidecar, then:
+Run `/brainstorm`. The command calls `spin next` to get the ready artifact, dispatches a SONNET worker via Task, the worker writes `BRAINSTORM.md` + a `define` handoff sidecar, then:
 
 ```bash
-ahx complete BRAINSTORM --handoff .ahx/features/payments-reconciliation/.handoffs/brainstorm.json
+spin complete BRAINSTORM --handoff .spindle/features/payments-reconciliation/.handoffs/brainstorm.json
 ```
 
 ### 3. Define
@@ -143,7 +143,7 @@ ahx complete BRAINSTORM --handoff .ahx/features/payments-reconciliation/.handoff
 Run `/define`. Before finishing, the command runs:
 
 ```bash
-ahx gate G_DEFINE
+spin gate G_DEFINE
 ```
 
 Exit 1 → surface `{reasons, unmet}` and stop. Exit 0 → proceed.
@@ -153,27 +153,27 @@ Exit 1 → surface `{reasons, unmet}` and stop. Exit 0 → proceed.
 Run `/design`. Gate fires:
 
 ```bash
-ahx gate G_DESIGN
+spin gate G_DESIGN
 ```
 
 ### 5. Build
 
-Run `/build`. The command loops over `ahx next`, fanning out independent artifacts in the same `parallel_group` in a single Task dispatch. Each worker writes its artifact + a `build-task` handoff. For each:
+Run `/build`. The command loops over `spin next`, fanning out independent artifacts in the same `parallel_group` in a single Task dispatch. Each worker writes its artifact + a `build-task` handoff. For each:
 
 ```bash
-ahx complete <id> --handoff .ahx/features/<feature>/.handoffs/<id>.json
-# exit 1 → ahx retry <id> --inc  (bounded by build_retry_cap)
-# at ceiling → ahx retry <id> --ok  exits 1, command surfaces the block
+spin complete <id> --handoff .spindle/features/<feature>/.handoffs/<id>.json
+# exit 1 → spin retry <id> --inc  (bounded by build_retry_cap)
+# at ceiling → spin retry <id> --ok  exits 1, command surfaces the block
 ```
 
-When all artifacts complete, `ahx gate G_BUILD` must pass before `/ship` is allowed.
+When all artifacts complete, `spin gate G_BUILD` must pass before `/ship` is allowed.
 
 ### 6. Ship
 
 Run `/ship`. Gate fires:
 
 ```bash
-ahx gate G_SHIP
+spin gate G_SHIP
 ```
 
 Exit 0 → the command assembles the SHIP doc and marks the feature complete.
@@ -185,24 +185,24 @@ Exit 0 → the command assembles the SHIP doc and marks the feature complete.
 Every workflow command follows these five steps — this is the whole mechanism:
 
 ```
-1. ahx next               → ready artifacts + model hints
-2. ahx route <kind>       → tier/model for each artifact
+1. spin next               → ready artifacts + model hints
+2. spin route <kind>       → tier/model for each artifact
 3. Task (worker)          → writes artifact + handoff sidecar
-4. ahx complete <id> --handoff <sidecar>
-      exit 1 → ahx retry <id> --inc / --ok (bounded)
-5. ahx gate <gateId>
+4. spin complete <id> --handoff <sidecar>
+      exit 1 → spin retry <id> --inc / --ok (bounded)
+5. spin gate <gateId>
       exit 1 → STOP, surface {reasons, unmet}
       exit 0 → advance
 ```
 
-Deterministic decisions live in `ahx`. Authoring lives in workers. Control flow branches on exit codes.
+Deterministic decisions live in `spin`. Authoring lives in workers. Control flow branches on exit codes.
 
 ---
 
 ## On-disk layout
 
 ```
-.ahx/
+.spindle/
 ├── run.json                              # ledger (CLI-written only; never edit by hand)
 ├── schema.yaml                           # active editable workflow (fork this)
 └── features/
@@ -222,19 +222,19 @@ Deterministic decisions live in `ahx`. Authoring lives in workers. Control flow 
 
 ## Forking `schema.yaml`
 
-The editable schema at `.ahx/schema.yaml` is yours to customise. It controls:
+The editable schema at `.spindle/schema.yaml` is yours to customise. It controls:
 
 - Which artifacts exist and their dependency edges (Kahn order)
-- The `model` hint per artifact (used by `ahx next`)
-- The `build_retry_cap` (cap for `ahx retry --ok`)
+- The `model` hint per artifact (used by `spin next`)
+- The `build_retry_cap` (cap for `spin retry --ok`)
 - Gate configurations
 
 ```bash
-ahx schema show      # print the active schema
-ahx schema validate  # check it is well-formed
+spin schema show      # print the active schema
+spin schema validate  # check it is well-formed
 ```
 
-After editing, run `ahx schema validate` before running any workflow command. The schema is intentionally small — artifact nodes + edges + a handful of config keys. Start from the `sdd` or `kb` built-in and trim or extend from there.
+After editing, run `spin schema validate` before running any workflow command. The schema is intentionally small — artifact nodes + edges + a handful of config keys. Start from the `sdd` or `kb` built-in and trim or extend from there.
 
 ---
 
@@ -246,8 +246,8 @@ The harness ships with **93 unit, integration, and end-to-end tests** (run `npm 
 - Gate pass/block logic for every gate ID
 - Handoff schema validation for all 9 schema IDs
 - Exit-code ABI conformance
-- **No-model-calls guard** — the test suite asserts that no `ahx` code path imports or invokes an inference SDK. This is enforced as a hard test failure, not a lint warning.
-- E2E: a full `sdd` cycle from `ahx init` through `ahx gate G_SHIP`, using fixture artifacts and handoffs, verifying that every `ahx complete` and gate transition produces the correct `run.json` state.
+- **No-model-calls guard** — the test suite asserts that no `spin` code path imports or invokes an inference SDK. This is enforced as a hard test failure, not a lint warning.
+- E2E: a full `sdd` cycle from `spin init` through `spin gate G_SHIP`, using fixture artifacts and handoffs, verifying that every `spin complete` and gate transition produces the correct `run.json` state.
 
 ### Run locally
 
@@ -276,4 +276,4 @@ No model credentials needed — all tests are deterministic. The no-model-calls 
 
 ---
 
-> `ahx` is the spine. Claude is the worker. The gate is the judge.
+> `spin` is the spine. Claude is the worker. The gate is the judge.

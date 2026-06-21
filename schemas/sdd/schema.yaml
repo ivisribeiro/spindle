@@ -2,7 +2,7 @@ name: sdd
 version: 1
 description: >
   Five-phase spec-driven development workflow. This file is DATA, not code —
-  fork it per project to change the workflow with no rebuild. The ahx CLI reads
+  fork it per project to change the workflow with no rebuild. The spin CLI reads
   it to order artifacts (Kahn topo-sort), route models, and run gates.
 
 config:

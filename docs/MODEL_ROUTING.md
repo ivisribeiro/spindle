@@ -1,7 +1,7 @@
 # Model Routing Policy
 
 This document defines how the harness selects a model tier for every worker agent
-dispatch. The authoritative command is `ahx route <taskKind> [--budget std|low]`.
+dispatch. The authoritative command is `spin route <taskKind> [--budget std|low]`.
 No command, skill, or worker agent may override its output.
 
 ---
@@ -14,7 +14,7 @@ No command, skill, or worker agent may override its output.
 | **SONNET** | sonnet | `spec-authoring` `design-synthesis` `code-build` `kb-concept` `finding-analysis` `claim-verify` `migration-plan` `merge` |
 | **OPUS** | opus | `architect` `define-intent` `design-intent` `adversary` `review-judge` `equivalence-break` |
 
-Call `ahx route <taskKind>` before every dispatch. It returns `{ tier, model, reason }`.
+Call `spin route <taskKind>` before every dispatch. It returns `{ tier, model, reason }`.
 Dispatch the worker on the returned model — do not hardcode a tier in a command or skill.
 
 ---
@@ -34,8 +34,8 @@ adjudicate a CRITICAL gate result produced by SONNET or OPUS.
 
 ### Rule 2 — Downgrade under `--budget low` only where a deterministic gate backstops the output
 
-Under `--budget low`, `ahx route` may lower a tier by one step **only** when a
-deterministic gate (`ahx gate <id>`) will verify the output before the phase
+Under `--budget low`, `spin route` may lower a tier by one step **only** when a
+deterministic gate (`spin gate <id>`) will verify the output before the phase
 advances. The downgrade is safe because the gate, not the model, is the final
 arbiter of correctness.
 
@@ -47,7 +47,7 @@ arbiter of correctness.
 
 ## `--budget low` behavior
 
-`ahx route <kind> --budget low` applies the following shifts where a gate backstops:
+`spin route <kind> --budget low` applies the following shifts where a gate backstops:
 
 | Task-kind | Standard tier | `--budget low` tier | Backstopping gate |
 |-----------|---------------|---------------------|-------------------|
@@ -69,10 +69,10 @@ Critical kinds (`adversary`, `architect`, `review-judge`, `*-intent`,
 
 ## Worked examples
 
-### Example 1 — `ahx route adversary` under `--budget low`
+### Example 1 — `spin route adversary` under `--budget low`
 
 ```
-$ ahx route adversary --budget low
+$ spin route adversary --budget low
 { "tier": "opus", "model": "claude-opus-…", "reason": "critical kind; budget flag ignored" }
 ```
 
@@ -81,20 +81,20 @@ the generator. Rule 2 does not permit downgrade because no deterministic gate
 replaces adversarial judgment. The result is OPUS regardless of `--budget low`.
 
 The harness dispatches the adversary worker on OPUS and proceeds with
-`ahx complete <id> --handoff <sidecar>`. If the handoff schema is invalid (exit 1),
-`ahx retry <id> --inc` increments the counter; at the ceiling `ahx retry <id> --ok`
+`spin complete <id> --handoff <sidecar>`. If the handoff schema is invalid (exit 1),
+`spin retry <id> --inc` increments the counter; at the ceiling `spin retry <id> --ok`
 exits 1 and the command surfaces the block to the user.
 
-### Example 2 — `ahx route code-build --budget low` → HAIKU via G_BUILD
+### Example 2 — `spin route code-build --budget low` → HAIKU via G_BUILD
 
 ```
-$ ahx route code-build --budget low
+$ spin route code-build --budget low
 { "tier": "haiku", "model": "claude-haiku-…", "reason": "G_BUILD backstops; downgrade permitted" }
 ```
 
 `code-build` is a SONNET kind. Under `--budget low` it is eligible for downgrade
 because G_BUILD provides a deterministic backstop: before `/ship` proceeds,
-`ahx gate G_BUILD` verifies that every manifest file exists on disk, the
+`spin gate G_BUILD` verifies that every manifest file exists on disk, the
 criteria-diff is empty, and the BUILD_REPORT is present. If the HAIKU worker
 produces incomplete or incorrect artifacts, G_BUILD exits 1 and blocks the phase —
 the harness surfaces `{gate, passed:false, reasons, unmet}` and does not advance.
@@ -104,21 +104,21 @@ Dispatch sequence:
 
 ```
 # 1. Learn ready artifacts
-ahx next
+spin next
 # -> { ready: [{ id: "BUILD-impl", model: "haiku", parallel_group: 0 }], ... }
 
 # 2. Route (budget flag confirms downgrade)
-ahx route code-build --budget low
+spin route code-build --budget low
 # -> { tier: "haiku", ... }
 
 # 3. Dispatch HAIKU worker via Task, worker writes artifact + handoff sidecar
 
 # 4. Complete with handoff validation
-ahx complete BUILD-impl --handoff .ahx/features/my-feature/.handoffs/BUILD-impl.json
+spin complete BUILD-impl --handoff .spindle/features/my-feature/.handoffs/BUILD-impl.json
 # exit 0 -> marked complete; exit 1 -> re-dispatch (bounded by retry cap)
 
 # 5. Gate check before /ship
-ahx gate G_BUILD
+spin gate G_BUILD
 # exit 0 -> proceed to /ship
 # exit 1 -> STOP; surface reasons + unmet; do not advance
 ```
@@ -132,11 +132,11 @@ The haiku worker's output is only accepted if G_BUILD passes — satisfying Rule
 Every workflow command follows this loop. Model routing is one step in it:
 
 ```
-1.  ahx next
+1.  spin next
     -> ready:[{id, model, parallel_group}], blocked:{}, complete:bool
 
 2.  For each ready artifact (fan out parallel_group in ONE message):
-      ahx route <taskKind> [--budget std|low]
+      spin route <taskKind> [--budget std|low]
       -> { tier, model, reason }
       Dispatch worker via Task on that model.
 
@@ -144,12 +144,12 @@ Every workflow command follows this loop. Model routing is one step in it:
     (sidecar schema: one of define|design|build-task|build-report|
      finding|claim|migration-plan|claudemd-section|kb-concept)
 
-4.  ahx complete <id> --handoff <sidecar>
+4.  spin complete <id> --handoff <sidecar>
     exit 0 -> marked complete
-    exit 1 -> handoff invalid; ahx retry <id> --inc  (re-dispatch)
-              at ceiling:  ahx retry <id> --ok  exits 1 -> surface block
+    exit 1 -> handoff invalid; spin retry <id> --inc  (re-dispatch)
+              at ceiling:  spin retry <id> --ok  exits 1 -> surface block
 
-5.  ahx gate <gateId>
+5.  spin gate <gateId>
     exit 0 -> advance to next phase
     exit 1 -> STOP; surface {gate, passed, reasons, unmet}; do not advance
 ```
@@ -166,8 +166,8 @@ Gates by phase:
 | Router phase | `G_ROUTER_COVERAGE` | agent→routing bijection, no silent skips |
 | Review/migrate | `G_REVIEW_BLOCK` | surviving CRITICAL findings > 0 blocks |
 
-Handoff validation (`ahx handoff-check <schemaId> <file.json>`) can be run
-standalone for debugging before `ahx complete`.
+Handoff validation (`spin handoff-check <schemaId> <file.json>`) can be run
+standalone for debugging before `spin complete`.
 
 ---
 
@@ -175,21 +175,21 @@ standalone for debugging before `ahx complete`.
 
 ```bash
 # What model for this task?
-ahx route spec-authoring
-ahx route adversary --budget low   # always returns opus
+spin route spec-authoring
+spin route adversary --budget low   # always returns opus
 
 # Inspect current routing decision for all ready artifacts
-ahx next   # model hint in each ready[] entry
+spin next   # model hint in each ready[] entry
 
 # Check a gate manually
-ahx gate G_BUILD
-ahx gate G_REVIEW_BLOCK --findings .ahx/features/foo/.handoffs/review.json
+spin gate G_BUILD
+spin gate G_REVIEW_BLOCK --findings .spindle/features/foo/.handoffs/review.json
 
 # Validate a handoff before completing
-ahx handoff-check build-report .ahx/features/foo/.handoffs/BUILD-impl.json
+spin handoff-check build-report .spindle/features/foo/.handoffs/BUILD-impl.json
 
 # Advance with retry logic
-ahx complete BUILD-impl --handoff .ahx/features/foo/.handoffs/BUILD-impl.json
-ahx retry BUILD-impl --inc   # if exit 1
-ahx retry BUILD-impl --ok    # at ceiling -> exits 1, surface block
+spin complete BUILD-impl --handoff .spindle/features/foo/.handoffs/BUILD-impl.json
+spin retry BUILD-impl --inc   # if exit 1
+spin retry BUILD-impl --ok    # at ceiling -> exits 1, surface block
 ```

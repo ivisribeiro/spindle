@@ -16,7 +16,7 @@ import {
 
 let root: string;
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), 'ahx-rs-'));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'spin-rs-'));
 });
 afterEach(() => {
   fs.rmSync(root, { recursive: true, force: true });
@@ -65,8 +65,8 @@ describe('run-state ledger', () => {
 
   it('throws on a missing or corrupt ledger', () => {
     expect(() => loadRunState(root)).toThrow(RunStateError);
-    fs.mkdirSync(path.join(root, '.ahx'), { recursive: true });
-    fs.writeFileSync(path.join(root, '.ahx', 'run.json'), '{ not json');
+    fs.mkdirSync(path.join(root, '.spindle'), { recursive: true });
+    fs.writeFileSync(path.join(root, '.spindle', 'run.json'), '{ not json');
     expect(() => loadRunState(root)).toThrow(RunStateError);
   });
 

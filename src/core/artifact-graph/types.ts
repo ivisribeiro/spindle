@@ -6,7 +6,7 @@ import { z } from 'zod';
 export const ModelTier = z.enum(['opus', 'sonnet', 'haiku']);
 export type ModelTier = z.infer<typeof ModelTier>;
 
-// Declarative structural checks run by `ahx validate`.
+// Declarative structural checks run by `spin validate`.
 export const ValidateSpec = z
   .object({
     md_sections: z.array(z.string()).optional(),
@@ -24,7 +24,7 @@ export const ArtifactSchema = z.object({
   template: z.string().optional(),
   instruction: z.string().optional(),
   requires: z.array(z.string()).default([]),
-  // --- ahx extensions ---
+  // --- spin extensions ---
   model: ModelTier.optional(),
   handoff: z.string().optional(),
   parallel_group: z.string().optional(),

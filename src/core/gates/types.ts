@@ -6,12 +6,12 @@ import type { ArtifactGraph } from '../artifact-graph/graph.js';
 // the same files yields the same result.
 
 export interface GateContext {
-  root: string; // project root (contains .ahx/)
+  root: string; // project root (contains .spindle/)
   args: Record<string, string>; // CLI-passed args (paths, etc.)
   runState: RunState | null;
   graph: ArtifactGraph | null;
-  featureDir: string | null; // .ahx/features/<feature>
-  handoffDir: string | null; // .ahx/features/<feature>/.handoffs
+  featureDir: string | null; // .spindle/features/<feature>
+  handoffDir: string | null; // .spindle/features/<feature>/.handoffs
 }
 
 export interface GateResult {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// ahx CLI entrypoint. Runs the compiled dist/ build.
+// spin CLI entrypoint. Runs the compiled dist/ build.
 // The plugin ships prebuilt dist/ so this works offline with no npm install.
 import { runCli } from '../dist/cli/index.js';
 

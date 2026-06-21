@@ -22,7 +22,7 @@ Extract discrete factual claims from a document. Each claim is an atomic asserti
    - Filter out opinions, hedges ("likely", "probably"), rhetorical questions, and meta-statements about the document itself.
 3. **Assign unique IDs** — use format `claim-<n>` (0-indexed: `claim-0`, `claim-1`, etc.).
 4. **Normalize text** — remove trailing punctuation, deduplicate.
-5. **Write handoff JSON** to `.ahx/features/<feature>/.handoffs/<id>.json`.
+5. **Write handoff JSON** to `.spindle/features/<feature>/.handoffs/<id>.json`.
 
 ## Handoff schema (type: `claim`)
 
@@ -40,7 +40,7 @@ Extract discrete factual claims from a document. Each claim is an atomic asserti
 ## Real invocation example
 
 ```bash
-ahx complete extract-worker-0 --handoff .ahx/features/myfeature/.handoffs/extract-worker-0.json
+spin complete extract-worker-0 --handoff .spindle/features/myfeature/.handoffs/extract-worker-0.json
 ```
 
 If the handoff is invalid (missing required `id` or `text` fields, or malformed JSON), the command exits 1.

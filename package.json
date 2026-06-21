@@ -1,10 +1,10 @@
 {
-  "name": "agentspec-harness",
+  "name": "spindle",
   "version": "0.1.0",
-  "description": "AgentSpec made harness-native: a deterministic, testable orchestration spine (ahx CLI) for spec-driven data engineering in Claude Code.",
+  "description": "AgentSpec made harness-native: a deterministic, testable orchestration spine (spin CLI) for spec-driven data engineering in Claude Code.",
   "type": "module",
   "bin": {
-    "ahx": "./bin/ahx.js"
+    "spin": "./bin/spin.js"
   },
   "files": [
     "bin",
@@ -44,5 +44,5 @@
   ],
   "license": "MIT",
   "author": "Ivis Ribeiro",
-  "repository": "https://github.com/ivisribeiro/agentspec-harness"
+  "repository": "https://github.com/ivisribeiro/spindle"
 }

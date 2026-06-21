@@ -8,7 +8,7 @@ beforeEach(() => {
 });
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
-describe('ahx CLI exit-code ABI', () => {
+describe('spin CLI exit-code ABI', () => {
   it('init returns 0 and writes run-state', async () => {
     const r = await cli(['--root', root, 'init', '--schema', 'sdd', '--feature', 'f']);
     expect(r.code).toBe(0);

@@ -111,7 +111,7 @@ Exit codes:
 - `0` — sidecar is schema-valid; your work is done
 - `1` — sidecar is invalid; fix `HANDOFF_OUT` and re-run
 
-Do NOT call `ahx complete`. The orchestrating command owns completion — it runs `ahx handoff-check finding` and then `ahx complete MIGRATE` after all workers finish.
+Do NOT call `spin complete`. The orchestrating command owns completion — it runs `spin handoff-check finding` and then `spin complete MIGRATE` after all workers finish.
 
 ## Constraints
 

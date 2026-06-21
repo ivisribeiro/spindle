@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// Typed worker-output contracts. `ahx complete --handoff` validates a worker's
+// Typed worker-output contracts. `spin complete --handoff` validates a worker's
 // JSON sidecar against one of these BEFORE the artifact counts as done. This is
 // the seam that makes "the LLM self-marked it done" impossible.
 

@@ -4,7 +4,7 @@
 //       adversary/architect/review-judge floors are opus and never downgrade;
 //   (b) tier downgrades under --budget low are allowed ONLY where a deterministic
 //       gate backstops the output.
-// Consumed two ways: static `model:` per artifact/agent, and `ahx route <kind>`.
+// Consumed two ways: static `model:` per artifact/agent, and `spin route <kind>`.
 
 export type Tier = 'haiku' | 'sonnet' | 'opus';
 export type Budget = 'std' | 'low';
@@ -32,7 +32,7 @@ export const TASK_KINDS: Record<string, KindDef> = {
   'file-read': { tier: 'haiku', floor: 'haiku', downgradable: false, reason: 'mechanical read' },
   'structure-extract': { tier: 'haiku', floor: 'haiku', downgradable: false, reason: 'mechanical extraction, gate-validated' },
   'frontmatter-parse': { tier: 'haiku', floor: 'haiku', downgradable: false, reason: 'parse, G_ROUTER_COVERAGE validates' },
-  'template-fill': { tier: 'haiku', floor: 'haiku', downgradable: false, reason: 'fill a template, ahx validate checks' },
+  'template-fill': { tier: 'haiku', floor: 'haiku', downgradable: false, reason: 'fill a template, spin validate checks' },
   'format-convert': { tier: 'haiku', floor: 'haiku', downgradable: false, reason: 'mechanical conversion' },
   'claim-extract': { tier: 'haiku', floor: 'haiku', downgradable: false, reason: 'extraction, claim handoff validated' },
   'ship-prose': { tier: 'haiku', floor: 'haiku', downgradable: false, reason: 'archive prose, G_SHIP already passed in code' },

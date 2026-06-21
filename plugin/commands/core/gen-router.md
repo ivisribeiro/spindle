@@ -7,9 +7,9 @@ Generate the agent-router routing table from source-of-truth agent frontmatter
 and validate it with a deterministic gate that fails closed on any malformed,
 missing, or duplicated agent — no silent skips.
 
-`/gen-router` is a **one-shot** command: it does not `ahx init` a run, so there
-is no run-state, no `ahx next/complete/retry`, and no graph artifact. The single
-deterministic check is `ahx gate G_ROUTER_COVERAGE`, which both parses every
+`/gen-router` is a **one-shot** command: it does not `spin init` a run, so there
+is no run-state, no `spin next/complete/retry`, and no graph artifact. The single
+deterministic check is `spin gate G_ROUTER_COVERAGE`, which both parses every
 agent's frontmatter (fail-closed) and asserts the bijection. The gate is the
 validator — the command's job is only to assemble `routing.json` and branch on
 the gate's exit code.
@@ -21,7 +21,7 @@ read every agent file under `plugin/agents/` (skip `README.md` and `_`-prefixed
 files), extract the `name` from each frontmatter, and write the routing table.
 
 ```bash
-ahx route router-assemble
+spin route router-assemble
 ```
 
 `routing.json` is a flat list of agent **names** (this is the exact shape
@@ -38,7 +38,7 @@ will report the malformed ones precisely.
 ## 2 — Assert the bijection with G_ROUTER_COVERAGE
 
 ```bash
-ahx gate G_ROUTER_COVERAGE --agents plugin/agents --routing plugin/skills/agent-router/routing.json
+spin gate G_ROUTER_COVERAGE --agents plugin/agents --routing plugin/skills/agent-router/routing.json
 ```
 
 The gate parses each agent's frontmatter (fail-closed: a file with no parseable
@@ -48,9 +48,9 @@ The gate parses each agent's frontmatter (fail-closed: a file with no parseable
 | Exit | Meaning | Action |
 |------|---------|--------|
 | 0 | Bijection holds — every agent exactly once, no invalid frontmatter, no silent skips | Report the agent count + the routing.json path. Done. |
-| 1 | Blocked — `{gate, passed, reasons, unmet}` printed by ahx. `unmet` entries are tagged `missing:<name>`, `duplicate:<name>`, `extra:<name>`, or the malformed file path | Surface `reasons` + `unmet`. Fix the offending agent frontmatter or the routing list, then re-run. **Stop** — do not ship a partial router. |
+| 1 | Blocked — `{gate, passed, reasons, unmet}` printed by spin. `unmet` entries are tagged `missing:<name>`, `duplicate:<name>`, `extra:<name>`, or the malformed file path | Surface `reasons` + `unmet`. Fix the offending agent frontmatter or the routing list, then re-run. **Stop** — do not ship a partial router. |
 | 2 / 3 | Usage / internal error | Surface and stop. |
 
 Never assemble a partial routing table to make the gate pass, and never invent
-`ahx` flags, gate ids, or handoff schemas beyond `route` and
+`spin` flags, gate ids, or handoff schemas beyond `route` and
 `gate G_ROUTER_COVERAGE`.

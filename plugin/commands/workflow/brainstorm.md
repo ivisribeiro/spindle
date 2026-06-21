@@ -1,13 +1,13 @@
 ---
 name: brainstorm
-description: Phase 0 (optional) — run a one-question-at-a-time collaborative brainstorm with an Opus worker and write BRAINSTORM.md for the feature. ahx complete brainstorm has no blocking gate; /define is recommended next.
+description: Phase 0 (optional) — run a one-question-at-a-time collaborative brainstorm with an Opus worker and write BRAINSTORM.md for the feature. spin complete brainstorm has no blocking gate; /define is recommended next.
 ---
 
 # /brainstorm
 
 Phase 0 brainstorm for a feature. Dispatches an Opus worker to explore the
 problem space through collaborative dialogue, writing
-`.ahx/features/<feature>/BRAINSTORM.md`. No gate blocks `ahx complete brainstorm`;
+`.spindle/features/<feature>/BRAINSTORM.md`. No gate blocks `spin complete brainstorm`;
 the command finishes and recommends `/define` as the next step.
 
 ## Usage
@@ -16,8 +16,8 @@ the command finishes and recommends `/define` as the next step.
 /brainstorm --feature <slug>
 ```
 
-`--feature` is required. The slug must match an existing `.ahx/features/<feature>/`
-directory (created by `ahx init`).
+`--feature` is required. The slug must match an existing `.spindle/features/<feature>/`
+directory (created by `spin init`).
 
 ---
 
@@ -48,12 +48,12 @@ worker. Do not downgrade — brainstorm intent exploration is a critical-kind ta
 ## Step 3 — dispatch the Opus brainstorm worker
 
 Fan out ONE Task on the Opus model with the prompt below. Pass `--feature` slug
-and the absolute path to `.ahx/features/<slug>/` as context.
+and the absolute path to `.spindle/features/<slug>/` as context.
 
 ### Worker prompt (send verbatim, substituting `<slug>` and `<feature_dir>`)
 
 ```
-You are a brainstorm facilitator for the agentspec-harness workflow.
+You are a brainstorm facilitator for the spindle workflow.
 Feature slug: <slug>
 Artifact output path: <feature_dir>/BRAINSTORM.md
 Handoff sidecar path: <feature_dir>/.handoffs/brainstorm.json
@@ -96,8 +96,8 @@ Then write the handoff sidecar <feature_dir>/.handoffs/brainstorm.json:
 
 (Using schema id "define" — the brainstorm output feeds directly into /define.)
 
-Do NOT call any ahx CLI commands yourself. The orchestrating command will call
-`ahx complete brainstorm --handoff <sidecar>` after you finish.
+Do NOT call any spin CLI commands yourself. The orchestrating command will call
+`spin complete brainstorm --handoff <sidecar>` after you finish.
 ```
 
 ## Step 4 — mark complete (no gate)
@@ -106,7 +106,7 @@ After the worker Task returns, call:
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js complete brainstorm \
-  --handoff .ahx/features/<slug>/.handoffs/brainstorm.json
+  --handoff .spindle/features/<slug>/.handoffs/brainstorm.json
 ```
 
 **Exit 0** — brainstorm is marked complete. No gate runs after this phase
@@ -136,7 +136,7 @@ Display a brief summary:
 ```
 Brainstorm complete for feature: <slug>
 
-BRAINSTORM.md written to .ahx/features/<slug>/BRAINSTORM.md
+BRAINSTORM.md written to .spindle/features/<slug>/BRAINSTORM.md
 
 Key themes: <key_themes from handoff>
 Open questions: <open_questions from handoff>
@@ -150,11 +150,11 @@ No gate is enforced here. The user decides when to proceed.
 
 ## Notes
 
-- `ahx next` will show `define` as ready after brainstorm completes (assuming
+- `spin next` will show `define` as ready after brainstorm completes (assuming
   the schema places DEFINE after BRAINSTORM in the build order).
 - If the user skips `/brainstorm` entirely and runs `/define` directly, that is
   valid — brainstorm is Phase 0 optional.
 - The handoff uses schema id `define` (not a dedicated `brainstorm` schema) because
-  the output feeds the DEFINE phase. `ahx handoff-check define <file>` can be used
+  the output feeds the DEFINE phase. `spin handoff-check define <file>` can be used
   to validate manually.
 - Worker model: **Opus** (`define-intent` kind). Never downgrade.

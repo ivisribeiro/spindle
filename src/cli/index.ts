@@ -18,7 +18,7 @@ import {
   type HandlerResult,
 } from '../commands/handlers.js';
 
-// ahx CLI. The deterministic harness spine. It NEVER calls a model — it manages
+// spin CLI. The deterministic harness spine. It NEVER calls a model — it manages
 // the artifact graph, run-state, and gates. Exit-code ABI: 0 pass · 1 blocked ·
 // 2 usage · 3 internal.
 
@@ -37,10 +37,10 @@ export async function runCli(
 
   const program = new Command();
   program
-    .name('ahx')
+    .name('spin')
     .description('AgentSpec Harness — deterministic spec-driven orchestration spine')
     .version('0.1.0')
-    .option('--root <dir>', 'project root containing .ahx/ (default: cwd)')
+    .option('--root <dir>', 'project root containing .spindle/ (default: cwd)')
     .enablePositionalOptions();
 
   const root = (cmd: Command): string => rootOf(cmd.optsWithGlobals());
@@ -151,7 +151,7 @@ export async function runCli(
 
 // Self-execute when run directly as the process entrypoint (e.g. the plugin
 // commands invoke `node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js <args>`). When
-// imported (bin/ahx.js, vitest), this guard is false and nothing auto-runs.
+// imported (bin/spin.js, vitest), this guard is false and nothing auto-runs.
 // realpath-normalizes both sides so a symlinked path (macOS /var -> /private/var,
 // or a symlinked install dir) still self-executes.
 function isDirectEntrypoint(): boolean {

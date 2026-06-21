@@ -1,13 +1,13 @@
 {
-  "name": "agentspec-harness",
+  "name": "spindle",
   "version": "0.1.0",
-  "description": "AgentSpec made harness-native: a deterministic, testable orchestration spine (the ahx CLI) for spec-driven data engineering — 53 specialist agents, 24 KB domains, 9 gates, model routing, and an adversarial verification loop. The CLI never calls a model; commands orchestrate Claude around CLI-enforced gates.",
+  "description": "AgentSpec made harness-native: a deterministic, testable orchestration spine (the spin CLI) for spec-driven data engineering — 53 specialist agents, 24 KB domains, 9 gates, model routing, and an adversarial verification loop. The CLI never calls a model; commands orchestrate Claude around CLI-enforced gates.",
   "author": {
     "name": "Ivis Ribeiro"
   },
   "license": "MIT",
-  "repository": "https://github.com/ivisribeiro/agentspec-harness",
-  "homepage": "https://github.com/ivisribeiro/agentspec-harness",
+  "repository": "https://github.com/ivisribeiro/spindle",
+  "homepage": "https://github.com/ivisribeiro/spindle",
   "keywords": [
     "claude-code",
     "harness",

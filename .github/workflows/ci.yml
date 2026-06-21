@@ -40,14 +40,14 @@ jobs:
         run: |
           PKG=$(mktemp -d)
           mkdir -p "$PKG/bin" "$PKG/dist/cli" "$PKG/schemas"
-          cp bin/ahx.js "$PKG/bin/"
+          cp bin/spin.js "$PKG/bin/"
           cp dist/cli/index.js "$PKG/dist/cli/"
           cp -r schemas/* "$PKG/schemas/"
           WORK=$(mktemp -d)
-          node "$PKG/bin/ahx.js" --root "$WORK" init --schema sdd --feature ci
-          node "$PKG/bin/ahx.js" --root "$WORK" route adversary | grep -q '"tier": "opus"'
+          node "$PKG/bin/spin.js" --root "$WORK" init --schema sdd --feature ci
+          node "$PKG/bin/spin.js" --root "$WORK" route adversary | grep -q '"tier": "opus"'
           # G_DEFINE must BLOCK on a fresh run (exit 1)
-          if node "$PKG/bin/ahx.js" --root "$WORK" gate G_DEFINE; then
+          if node "$PKG/bin/spin.js" --root "$WORK" gate G_DEFINE; then
             echo "G_DEFINE should have blocked"; exit 1
           fi
           echo "bundle is self-contained and gates work"

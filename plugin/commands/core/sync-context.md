@@ -28,21 +28,21 @@ Default `--budget` is `std`.
 ## Step 0 — Route & initialize
 
 ```bash
-ahx route section-scan --budget $BUDGET
+spin route section-scan --budget $BUDGET
 # -> { tier: "haiku", model: "...", reason: "..." }
 ```
 
 Store `SECTION_MODEL` from the response.
 
-Initialize a minimal ledger so `ahx retry` has a backing store for the
+Initialize a minimal ledger so `spin retry` has a backing store for the
 per-worker re-dispatch counter:
 
 ```bash
-ahx init --schema sdd --feature sync-context
+spin init --schema sdd --feature sync-context
 ```
 
-(The schema contents are not used; `ahx init` creates `.ahx/run.json` which
-`ahx retry` requires to persist counts.)
+(The schema contents are not used; `spin init` creates `.spindle/run.json` which
+`spin retry` requires to persist counts.)
 
 ---
 
@@ -55,7 +55,7 @@ Dispatch **1 haiku worker** (Task) to slice `CLAUDE.md` into sections.
 > Read the file at `$CLAUDEMD_PATH` in full.
 > For every top-level `##` heading, emit a JSON array element with:
 > `{ "id": "<slug>", "heading": "<exact heading text>", "body": "<verbatim body>" }`.
-> Write the array to `.ahx/sync-context/sections-raw.json`.
+> Write the array to `.spindle/sync-context/sections-raw.json`.
 > Assign each section an `id` that is the heading lowercased, spaces→hyphens,
 > punctuation stripped (e.g. `## 1. Princípios invioláveis` → `principios-inviolaveis`).
 
@@ -65,7 +65,7 @@ Wait for the worker to complete (single task, no gate needed here).
 
 ## Step 2 — Fan out 5 parallel section-scan workers
 
-Read `.ahx/sync-context/sections-raw.json`.  
+Read `.spindle/sync-context/sections-raw.json`.  
 Partition the section array into **5 roughly equal slices** (slice 0–4).
 
 Dispatch ALL 5 workers in a **single Task message** (true parallel, same
@@ -102,14 +102,14 @@ Dispatch ALL 5 workers in a **single Task message** (true parallel, same
 > }
 > ```
 >
-> Write the array to `.ahx/sync-context/handoffs-worker-$WORKER_INDEX.json`.
+> Write the array to `.spindle/sync-context/handoffs-worker-$WORKER_INDEX.json`.
 >
 > Rules:
 > - When `strategy=preserve`, copy `body` verbatim into `content`. No edits.
 > - When `strategy=replace`, write the complete new body in `content`.
 > - When `strategy=merge`, write the complete merged body in `content`
 >   (integrate new facts; do not delete existing correct lines).
-> - Never invent ahx commands, gate ids, or handoff schema ids.
+> - Never invent spin commands, gate ids, or handoff schema ids.
 
 Collect all 5 worker output files before proceeding.
 
@@ -120,15 +120,15 @@ Collect all 5 worker output files before proceeding.
 For each of the 5 handoff files, run:
 
 ```bash
-ahx handoff-check claudemd-section .ahx/sync-context/handoffs-worker-$N.json
+spin handoff-check claudemd-section .spindle/sync-context/handoffs-worker-$N.json
 ```
 
 Exit code 1 means the handoff JSON is malformed or missing required fields.
 On failure, gate the re-dispatch on the CLI counter:
 
 ```bash
-ahx retry worker-$N --inc   # increment; exits 0 while under ceiling
-ahx retry worker-$N --ok    # exits 1 when ceiling is reached
+spin retry worker-$N --inc   # increment; exits 0 while under ceiling
+spin retry worker-$N --ok    # exits 1 when ceiling is reached
 ```
 
 If `--inc` exits 0, re-dispatch that worker and re-validate.
@@ -144,7 +144,7 @@ This step runs in the orchestrating command, NOT in a worker — no LLM involved
 Algorithm:
 
 1. Load all validated handoff arrays, flatten into a single list keyed by `id`.
-2. Load `.ahx/sync-context/sections-raw.json` (original order).
+2. Load `.spindle/sync-context/sections-raw.json` (original order).
 3. For each section in original order:
    - Look up the matching handoff by `id`.
    - Apply strategy:
@@ -163,12 +163,12 @@ substitution driven solely by `strategy`.
 ## Step 5 — Validate result
 
 ```bash
-ahx validate $CLAUDEMD_PATH
+spin validate $CLAUDEMD_PATH
 ```
 
 Exit 0 → surface a summary of changes (per section: strategy applied + one-line
 diff summary).  
-Exit 1 → structural check failed; restore original from `.ahx/sync-context/sections-raw.json`
+Exit 1 → structural check failed; restore original from `.spindle/sync-context/sections-raw.json`
 backup and surface `{reasons, unmet}`.
 
 ---
@@ -190,7 +190,7 @@ sync-context complete
 
 | Condition | Action |
 |---|---|
-| Worker handoff invalid (exit 1 from `ahx handoff-check`) | `ahx retry <worker-id> --inc` (re-dispatch while exit 0); abort when `ahx retry <worker-id> --ok` exits 1 (ceiling) |
-| `ahx validate` exit 1 after write | Restore backup; surface unmet reasons |
+| Worker handoff invalid (exit 1 from `spin handoff-check`) | `spin retry <worker-id> --inc` (re-dispatch while exit 0); abort when `spin retry <worker-id> --ok` exits 1 (ceiling) |
+| `spin validate` exit 1 after write | Restore backup; surface unmet reasons |
 | CLAUDE.md not found at `--claudemd` path | Abort immediately with usage error (exit 2) |
 | Fewer than 1 section parsed | Abort — file may not use `##` headings |

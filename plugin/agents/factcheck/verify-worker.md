@@ -22,7 +22,7 @@ You receive (from the orchestrating command or parent task context):
 - `claim.id` — e.g. `claim-0`
 - `claim.text` — the normalized assertion to verify
 - `feature` — the feature slug (for handoff path)
-- `worker_id` — the artifact id for `ahx complete` (e.g. `verify-worker-0`)
+- `worker_id` — the artifact id for `spin complete` (e.g. `verify-worker-0`)
 
 ## Process
 
@@ -41,14 +41,14 @@ You receive (from the orchestrating command or parent task context):
 
 4. **Collect evidence** — one-sentence summary per piece of evidence (file path + finding). If verdict is `unverifiable`, write a one-sentence explanation of what was searched and why it was insufficient.
 
-5. **Write handoff JSON** to `.ahx/features/<feature>/.handoffs/<worker_id>.json`.
+5. **Write handoff JSON** to `.spindle/features/<feature>/.handoffs/<worker_id>.json`.
 
 6. **Complete the artifact**:
 ```bash
-ahx complete <worker_id> --handoff .ahx/features/<feature>/.handoffs/<worker_id>.json
+spin complete <worker_id> --handoff .spindle/features/<feature>/.handoffs/<worker_id>.json
 ```
 
-If exit code is 1, the handoff is invalid — check required fields and retry with corrected JSON (bounded by `ahx retry <worker_id> --inc`; stop when `--ok` exits 1).
+If exit code is 1, the handoff is invalid — check required fields and retry with corrected JSON (bounded by `spin retry <worker_id> --inc`; stop when `--ok` exits 1).
 
 ## Handoff schema (type: `claim`)
 

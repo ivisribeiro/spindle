@@ -6,7 +6,7 @@ import { listGates } from '../../src/core/gates/registry.js';
 import { listTaskKinds } from '../../src/core/model-route/policy.js';
 import { HANDOFF_SCHEMAS } from '../../src/core/handoff/schemas.js';
 
-// Every `ahx gate <ID>`, `ahx route <kind>`, and `ahx handoff-check <id>` written
+// Every `spin gate <ID>`, `spin route <kind>`, and `spin handoff-check <id>` written
 // in a command doc must reference something that ACTUALLY EXISTS. This is the
 // mechanical backstop against the drift the final adversary found (an invented
 // gate, a non-existent routing kind, a wrong handoff id). It scans the real
@@ -50,7 +50,7 @@ function collect(re: RegExp): Map<string, string[]> {
   return refs;
 }
 
-describe('command docs reference only real ahx primitives', () => {
+describe('command docs reference only real spin primitives', () => {
   it('finds commands to check', () => {
     expect(files.length).toBeGreaterThan(5);
   });

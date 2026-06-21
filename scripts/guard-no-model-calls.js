@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Standalone enforcement of the one invariant: the ahx CLI NEVER calls a model.
+// Standalone enforcement of the one invariant: the spin CLI NEVER calls a model.
 // Scans src/ for inference endpoints, model SDK imports, or `claude -p`. Exits 1
 // on any hit. The same check runs inside the vitest suite (test/e2e/guard.test.ts);
 // this script is for CI / pre-commit use. `npm run guard`.
@@ -38,7 +38,7 @@ for (const file of tsFiles(SRC)) {
 }
 
 if (violations.length > 0) {
-  console.error('GUARD FAILED — ahx must never call a model. Violations:');
+  console.error('GUARD FAILED — spin must never call a model. Violations:');
   for (const v of violations) console.error('  ' + v);
   process.exit(1);
 }

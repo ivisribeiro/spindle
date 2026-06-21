@@ -13,9 +13,9 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
 const R = (...args: string[]) => cli(['--root', root, ...args]);
-const FD = () => `${root}/.ahx/features/redis`;
+const FD = () => `${root}/.spindle/features/redis`;
 
-describe('E2E: KB cycle through the ahx CLI', () => {
+describe('E2E: KB cycle through the spin CLI', () => {
   it('blocks coverage until every manifest concept is authored', async () => {
     expect((await R('init', '--schema', 'kb', '--feature', 'redis')).code).toBe(0);
 
@@ -23,7 +23,7 @@ describe('E2E: KB cycle through the ahx CLI', () => {
     expect(ready.json.ready.map((x: any) => x.id)).toContain('manifest');
 
     // manifest declares two concepts
-    writeJson(root, '.ahx/features/redis/manifest.json', {
+    writeJson(root, '.spindle/features/redis/manifest.json', {
       concepts: [{ slug: 'hashes' }, { slug: 'streams' }],
     });
 
@@ -31,10 +31,10 @@ describe('E2E: KB cycle through the ahx CLI', () => {
     expect((await R('gate', 'G_KB_STRUCTURE')).code).toBe(1);
 
     // author scaffolding + one of two concepts
-    write(root, '.ahx/features/redis/index.md', '# redis\n');
-    write(root, '.ahx/features/redis/quick-reference.md', '# cheatsheet\n');
-    write(root, '.ahx/features/redis/concept-hashes.md', '# hashes\n');
-    writeJson(root, '.ahx/features/redis/.handoffs/kb-concept-hashes.json', {
+    write(root, '.spindle/features/redis/index.md', '# redis\n');
+    write(root, '.spindle/features/redis/quick-reference.md', '# cheatsheet\n');
+    write(root, '.spindle/features/redis/concept-hashes.md', '# hashes\n');
+    writeJson(root, '.spindle/features/redis/.handoffs/kb-concept-hashes.json', {
       concept: 'hashes',
       summary: 'redis hashes',
       test_cases: ['HSET k f v'],
@@ -49,8 +49,8 @@ describe('E2E: KB cycle through the ahx CLI', () => {
     expect(blocked.json.unmet).toContain('concept:streams');
 
     // author the missing concept
-    write(root, '.ahx/features/redis/concept-streams.md', '# streams\n');
-    writeJson(root, '.ahx/features/redis/.handoffs/kb-concept-streams.json', {
+    write(root, '.spindle/features/redis/concept-streams.md', '# streams\n');
+    writeJson(root, '.spindle/features/redis/.handoffs/kb-concept-streams.json', {
       concept: 'streams',
       summary: 'redis streams',
       test_cases: ['XADD s * f v'],
@@ -61,11 +61,11 @@ describe('E2E: KB cycle through the ahx CLI', () => {
 
   it('blocks coverage when a concept has too few test cases', async () => {
     await R('init', '--schema', 'kb', '--feature', 'redis');
-    writeJson(root, '.ahx/features/redis/manifest.json', { concepts: [{ slug: 'geo' }] });
-    write(root, '.ahx/features/redis/index.md', '# x\n');
-    write(root, '.ahx/features/redis/quick-reference.md', '# x\n');
-    write(root, '.ahx/features/redis/concept-geo.md', '# geo\n');
-    writeJson(root, '.ahx/features/redis/.handoffs/kb-concept-geo.json', {
+    writeJson(root, '.spindle/features/redis/manifest.json', { concepts: [{ slug: 'geo' }] });
+    write(root, '.spindle/features/redis/index.md', '# x\n');
+    write(root, '.spindle/features/redis/quick-reference.md', '# x\n');
+    write(root, '.spindle/features/redis/concept-geo.md', '# geo\n');
+    writeJson(root, '.spindle/features/redis/.handoffs/kb-concept-geo.json', {
       concept: 'geo',
       summary: 'geo',
       test_cases: [], // below kb_min_test_cases (1)

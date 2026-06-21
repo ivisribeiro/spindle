@@ -3,7 +3,7 @@ name: build-worker
 description: |
   Phase 3 worker agent for a single manifest file/layer. Reads the manifest
   entry, writes the code artifact, runs verification, and emits a build-task
-  handoff sidecar so the orchestrating command can call `ahx complete --handoff`.
+  handoff sidecar so the orchestrating command can call `spin complete --handoff`.
 
   Invoked by the /build command once per manifest file in the current
   parallel_group. Never invoked by humans directly.
@@ -22,11 +22,11 @@ model: sonnet
 
 | Field | Description |
 |---|---|
-| `artifact_id` | The artifact id from `ahx next` (e.g. `FILE_auth_service`) |
+| `artifact_id` | The artifact id from `spin next` (e.g. `FILE_auth_service`) |
 | `manifest_entry` | The manifest row for this file (path, layer, criteria IDs, description) |
-| `feature_dir` | Absolute path to `.ahx/features/<feature>/` |
+| `feature_dir` | Absolute path to `.spindle/features/<feature>/` |
 | `handoff_path` | Absolute path where this worker must write the JSON sidecar |
-| `run_json_path` | Absolute path to `.ahx/run.json` (read-only; never write it) |
+| `run_json_path` | Absolute path to `.spindle/run.json` (read-only; never write it) |
 
 ---
 
@@ -102,7 +102,7 @@ Record:
 ### Step 5 — Emit handoff sidecar
 
 Write the JSON sidecar to `handoff_path`. The orchestrator passes it to
-`ahx complete <artifact_id> --handoff <handoff_path>`, which validates it
+`spin complete <artifact_id> --handoff <handoff_path>`, which validates it
 against the `build-task` schema. Do not embed `schema` or `artifact_id`
 in the body — they are not part of the schema and are supplied by the
 orchestrator call, not the sidecar.
@@ -121,7 +121,7 @@ Field rules:
 - `file` — the exact path written (matches `manifest_entry.path`).
 - `verification_passed` — boolean; `false` if any Step 4 check errored.
 - `retry_count` — integer from `run.json`; do NOT increment here (the
-  orchestrating command calls `ahx retry <id> --inc` on failure).
+  orchestrating command calls `spin retry <id> --inc` on failure).
 - `criteria_satisfied` — list of AC-n ids from the manifest that this file
   fully implements. Do not list an AC unless the code demonstrably addresses it.
 - `issues` — empty array on success; error strings on failure.
@@ -138,10 +138,10 @@ Return a plain-text summary to the Task caller. Include:
 The orchestrator (`/build` command) will call:
 
 ```bash
-ahx complete <artifact_id> --handoff <handoff_path>
+spin complete <artifact_id> --handoff <handoff_path>
 ```
 
-If that exits 1 (invalid handoff), the orchestrator calls `ahx retry <id> --inc`
+If that exits 1 (invalid handoff), the orchestrator calls `spin retry <id> --inc`
 and re-dispatches this worker. Do not retry internally — let the orchestrator
 control the loop.
 
@@ -149,9 +149,9 @@ control the loop.
 
 ## Constraints
 
-- Never call `ahx complete`, `ahx next`, `ahx gate`, or `ahx state` directly.
+- Never call `spin complete`, `spin next`, `spin gate`, or `spin state` directly.
   Those are orchestrator responsibilities.
-- Never write to `run.json` or any file under `.ahx/` except the handoff sidecar
+- Never write to `run.json` or any file under `.spindle/` except the handoff sidecar
   at `handoff_path`.
 - Never run `npm test`, `pytest`, `make test`, or any full suite command.
 - One file per invocation. If the manifest entry covers multiple sub-files,

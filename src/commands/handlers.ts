@@ -84,12 +84,12 @@ export function initHandler(root: string, opts: { schema?: string; feature?: str
 }
 
 export function stateHandler(root: string): HandlerResult {
-  if (!runStateExists(root)) return usage('no run state — run "ahx init" first');
+  if (!runStateExists(root)) return usage('no run state — run "spin init" first');
   return ok(loadRunState(root));
 }
 
 export function nextHandler(root: string): HandlerResult {
-  if (!runStateExists(root)) return usage('no run state — run "ahx init" first');
+  if (!runStateExists(root)) return usage('no run state — run "spin init" first');
   const graph = activeGraph(root);
   const completed = effectiveCompleted(root, graph);
   const ready = graph.getNextArtifacts(completed).map((id) => {
@@ -106,7 +106,7 @@ export function nextHandler(root: string): HandlerResult {
 }
 
 export function orderHandler(root: string): HandlerResult {
-  if (!runStateExists(root)) return usage('no run state — run "ahx init" first');
+  if (!runStateExists(root)) return usage('no run state — run "spin init" first');
   return ok({ order: activeGraph(root).getBuildOrder() });
 }
 
@@ -115,7 +115,7 @@ export function completeHandler(
   id: string,
   opts: { handoff?: string }
 ): HandlerResult {
-  if (!runStateExists(root)) return usage('no run state — run "ahx init" first');
+  if (!runStateExists(root)) return usage('no run state — run "spin init" first');
   const graph = activeGraph(root);
   const artifact = graph.getArtifact(id);
   if (!artifact) return usage(`unknown artifact "${id}"`);
@@ -146,7 +146,7 @@ export function completeHandler(
 }
 
 export function validateHandler(root: string, idOrPath: string): HandlerResult {
-  if (!runStateExists(root)) return usage('no run state — run "ahx init" first');
+  if (!runStateExists(root)) return usage('no run state — run "spin init" first');
   const graph = activeGraph(root);
   const state = loadRunState(root);
   const artifact = graph.getArtifact(idOrPath);
@@ -214,7 +214,7 @@ export function diffCriteriaHandler(
     build = JSON.parse(fs.readFileSync(buildPath, 'utf-8'));
   } catch {
     return usage(
-      'diff-criteria expects the JSON handoff sidecars (.ahx/.../.handoffs/define.json and build.json), not the markdown artifacts'
+      'diff-criteria expects the JSON handoff sidecars (.spindle/.../.handoffs/define.json and build.json), not the markdown artifacts'
     );
   }
   const passed = (build.results ?? []).filter((r) => r.status === 'passed').map((r) => r.criterion);
@@ -232,7 +232,7 @@ export function retryHandler(
   id: string,
   opts: { inc?: boolean; ok?: boolean }
 ): HandlerResult {
-  if (!runStateExists(root)) return usage('no run state — run "ahx init" first');
+  if (!runStateExists(root)) return usage('no run state — run "spin init" first');
   const graph = activeGraph(root);
   const cap = graph.getSchema().config?.build_retry_cap ?? 3;
   if (opts.inc) {
@@ -258,12 +258,12 @@ export function routeHandler(kind: string, opts: { budget?: string }): HandlerRe
 export function schemaHandler(root: string, action: string): HandlerResult {
   const schemaPath = runStateExists(root) ? schemaCopyPath(root) : null;
   if (action === 'show') {
-    if (!schemaPath || !fs.existsSync(schemaPath)) return usage('no active schema — run "ahx init"');
+    if (!schemaPath || !fs.existsSync(schemaPath)) return usage('no active schema — run "spin init"');
     return ok(loadSchema(schemaPath));
   }
   if (action === 'validate') {
     const target = schemaPath && fs.existsSync(schemaPath) ? schemaPath : null;
-    if (!target) return usage('no active schema to validate — run "ahx init"');
+    if (!target) return usage('no active schema to validate — run "spin init"');
     try {
       parseSchema(fs.readFileSync(target, 'utf-8'));
       return ok({ valid: true, schema: target });

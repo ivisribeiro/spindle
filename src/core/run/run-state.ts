@@ -2,11 +2,11 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { RunStateSchema, type RunState, type GateRecord } from './run-state.schema.js';
 
-// Atomic, Zod-validated read/write of .ahx/run.json. This module is the single
+// Atomic, Zod-validated read/write of .spindle/run.json. This module is the single
 // writer of run-state. The LLM never writes here; it only triggers CLI commands
 // that call these functions.
 
-export const RUN_DIR = '.ahx';
+export const RUN_DIR = '.spindle';
 export const RUN_FILE = 'run.json';
 export const SCHEMA_FILE = 'schema.yaml';
 
@@ -58,7 +58,7 @@ export function runStateExists(root: string): boolean {
 export function loadRunState(root: string): RunState {
   const file = runFilePath(root);
   if (!fs.existsSync(file)) {
-    throw new RunStateError(`No run state at ${file}. Run "ahx init" first.`);
+    throw new RunStateError(`No run state at ${file}. Run "spin init" first.`);
   }
   let parsed: unknown;
   try {

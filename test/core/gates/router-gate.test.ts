@@ -26,7 +26,7 @@ function ctxFor(routing: unknown): GateContext {
 }
 
 beforeEach(() => {
-  root = fs.mkdtempSync(path.join(os.tmpdir(), 'ahx-router-'));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'spin-router-'));
   agentsDir = path.join(root, 'agents');
   fs.mkdirSync(agentsDir, { recursive: true });
   fs.writeFileSync(path.join(agentsDir, 'alpha.md'), agent('alpha'));

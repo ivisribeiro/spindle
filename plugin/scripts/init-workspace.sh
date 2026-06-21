@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# SessionStart hook. Ensures the ahx CLI bundle is present. The plugin ships a
+# SessionStart hook. Ensures the spin CLI bundle is present. The plugin ships a
 # prebuilt self-contained bundle (dist/cli/index.js, deps inlined) so this is
 # normally a no-op. If the bundle is missing AND a dev toolchain is available,
-# it rebuilds quietly. It NEVER calls a model and NEVER runs `ahx init` (that is
+# it rebuilds quietly. It NEVER calls a model and NEVER runs `spin init` (that is
 # per-feature and user-driven). Fail-open: never block a session.
 set -euo pipefail
 

@@ -13,10 +13,10 @@ authors a plan never validates it, and the agent that verifies equivalence never
 authors a plan.
 
 `/migrate` is a **one-shot review flow**, not an SDD/KB phase graph: it does not
-`ahx init` a run, so there is no run-state, no `ahx next/complete/retry`, and no
-graph artifact. Its only deterministic checks are `ahx handoff-check` (worker
-output shape) and `ahx gate G_REVIEW_BLOCK` (the correctness gate). Pick any
-working directory under `.ahx/migrate/<name>/` for scratch files.
+`spin init` a run, so there is no run-state, no `spin next/complete/retry`, and no
+graph artifact. Its only deterministic checks are `spin handoff-check` (worker
+output shape) and `spin gate G_REVIEW_BLOCK` (the correctness gate). Pick any
+working directory under `.spindle/migrate/<name>/` for scratch files.
 
 The chain: **two independent plans → engine pick from the data → independent
 equivalence verification → adversarial equivalence-break → findings.json →
@@ -40,7 +40,7 @@ does not see the equivalence or adversary phases.
 Route each on `migration-plan` (sonnet — analysis/authoring):
 
 ```bash
-ahx route migration-plan
+spin route migration-plan
 ```
 
 Use the returned `{ tier, model, reason }` (expected: sonnet) for **both**
@@ -52,8 +52,8 @@ workers. Then dispatch, in one message:
 > volume/throughput profile. Decide whether **dbt** is the right engine for THIS
 > data — base the call on the evidence. If the data argues against dbt, say so in
 > `risks` and still produce the most honest dbt plan possible. Author
-> `.ahx/migrate/<name>/MIGRATION_PLAN_DBT.md`, then write a JSON handoff sidecar
-> at `.ahx/migrate/<name>/plan-dbt.json` matching the `migration-plan` schema
+> `.spindle/migrate/<name>/MIGRATION_PLAN_DBT.md`, then write a JSON handoff sidecar
+> at `.spindle/migrate/<name>/plan-dbt.json` matching the `migration-plan` schema
 > (`rollback` is a single string — see `schemas/handoffs/examples/migration-plan.json`):
 >
 > ```json
@@ -68,14 +68,14 @@ workers. Then dispatch, in one message:
 > Do not validate equivalence. Do not run the rewrite. Plan only.
 
 **Worker B — migrate-spark-worker (sonnet).** Same instruction, engine `spark`,
-writing `MIGRATION_PLAN_SPARK.md` and `.ahx/migrate/<name>/plan-spark.json` with
+writing `MIGRATION_PLAN_SPARK.md` and `.spindle/migrate/<name>/plan-spark.json` with
 `"engine": "spark"`.
 
 ### 2. Validate both plan handoffs
 
 ```bash
-ahx handoff-check migration-plan .ahx/migrate/<name>/plan-dbt.json
-ahx handoff-check migration-plan .ahx/migrate/<name>/plan-spark.json
+spin handoff-check migration-plan .spindle/migrate/<name>/plan-dbt.json
+spin handoff-check migration-plan .spindle/migrate/<name>/plan-spark.json
 ```
 
 Exit 1 on either → that plan's handoff is the wrong shape. Re-dispatch **only
@@ -97,7 +97,7 @@ Dispatch a separate **equivalence-worker** — a different agent from either pla
 author, with no authority to amend the plan. Route on `claim-verify` (sonnet):
 
 ```bash
-ahx route claim-verify
+spin route claim-verify
 ```
 
 Instruct it:
@@ -107,7 +107,7 @@ Instruct it:
 > every legacy output (row grain, column semantics, aggregations, null/empty
 > handling, dedup keys, watermark/late-data behavior, type coercions), confirm
 > the migrated plan reproduces it. Emit one `finding` handoff sidecar at
-> `.ahx/migrate/<name>/equiv-findings.json` matching the `finding` schema —
+> `.spindle/migrate/<name>/equiv-findings.json` matching the `finding` schema —
 > a `{ "findings": [ ... ] }` object whose entries use **lowercase** severity:
 >
 > ```json
@@ -132,7 +132,7 @@ Instruct it:
 Validate it:
 
 ```bash
-ahx handoff-check finding .ahx/migrate/<name>/equiv-findings.json
+spin handoff-check finding .spindle/migrate/<name>/equiv-findings.json
 ```
 
 ### 5. Adversarial equivalence-break (Opus)
@@ -141,7 +141,7 @@ Dispatch the **adversary / challenger** on the `equivalence-break` task kind —
 critical routing kind that **never downgrades**, even under `--budget low`:
 
 ```bash
-ahx route equivalence-break --budget low
+spin route equivalence-break --budget low
 ```
 
 Use the returned model (expected: opus). The adversary did not author the plan
@@ -152,7 +152,7 @@ and is not the equivalence-worker. Instruct it:
 > records, type overflow, timezone/locale, empty partitions, ordering
 > non-determinism) for which the migrated plan diverges from the legacy output.
 > Treat the equivalence-worker's PASSes as hypotheses to falsify. Emit a `finding`
-> handoff at `.ahx/migrate/<name>/adversary-findings.json` (same `{ "findings": [ ... ] }`
+> handoff at `.spindle/migrate/<name>/adversary-findings.json` (same `{ "findings": [ ... ] }`
 > shape, lowercase severity, `source: "adversary"`). A reproducible divergence in
 > output values, grain, or row count is `critical`. Do not soften severity and do
 > not patch the plan.
@@ -160,14 +160,14 @@ and is not the equivalence-worker. Instruct it:
 Validate it:
 
 ```bash
-ahx handoff-check finding .ahx/migrate/<name>/adversary-findings.json
+spin handoff-check finding .spindle/migrate/<name>/adversary-findings.json
 ```
 
 ### 6. Emit findings.json
 
 Concatenate the `findings` arrays from the equivalence-worker (step 4) and the
 adversary (step 5) into one `finding` handoff at
-`.ahx/migrate/<name>/findings.json`:
+`.spindle/migrate/<name>/findings.json`:
 
 ```json
 { "findings": [ "<every equiv finding>", "<every adversary finding>" ] }
@@ -179,7 +179,7 @@ gate — the agents that produced the findings do not get to clear them.
 ### 7. Gate G_REVIEW_BLOCK (before any recommendation)
 
 ```bash
-ahx gate G_REVIEW_BLOCK --findings .ahx/migrate/<name>/findings.json
+spin gate G_REVIEW_BLOCK --findings .spindle/migrate/<name>/findings.json
 ```
 
 `G_REVIEW_BLOCK` blocks when surviving **CRITICAL** findings > 0.
@@ -192,7 +192,7 @@ ahx gate G_REVIEW_BLOCK --findings .ahx/migrate/<name>/findings.json
 
 ### 8. Recommend (only after G_REVIEW_BLOCK passes)
 
-Report to the user (no `ahx complete` — there is no run to complete):
+Report to the user (no `spin complete` — there is no run to complete):
 
 - The recommended engine and **why the data chose it** (vs. the rejected engine).
 - The remaining HIGH/MEDIUM/LOW findings that survived review (carry-forward risk).
@@ -206,8 +206,8 @@ surviving CRITICAL equivalence breaks.
 
 | Condition | Action |
 |---|---|
-| `ahx handoff-check migration-plan` exit 1 (step 2) | Re-dispatch ONLY that plan worker (≤2 times); then STOP and surface the errors. |
-| `ahx handoff-check finding` exit 1 (step 4/5) | Re-dispatch that reviewer to re-emit the sidecar in the correct `{findings:[...]}` shape (≤2 times); then STOP. |
+| `spin handoff-check migration-plan` exit 1 (step 2) | Re-dispatch ONLY that plan worker (≤2 times); then STOP and surface the errors. |
+| `spin handoff-check finding` exit 1 (step 4/5) | Re-dispatch that reviewer to re-emit the sidecar in the correct `{findings:[...]}` shape (≤2 times); then STOP. |
 | Both plans argue against their engine | Surface both `risks` sets; do not force a recommendation. The data may not be migratable as-is. |
 | `G_REVIEW_BLOCK` exit 1 (step 7) | STOP. Print `reasons` + surviving CRITICAL findings. Re-author the affected plan (step 1); never edit findings.json to pass the gate. |
 
@@ -224,5 +224,5 @@ surviving CRITICAL equivalence breaks.
   merged, or downgraded to clear `G_REVIEW_BLOCK`.
 - **No recommendation before `G_REVIEW_BLOCK` passes.** Never auto-advance past a
   failing gate.
-- Never invent `ahx` flags, gate IDs, task kinds, or handoff schema ids beyond
+- Never invent `spin` flags, gate IDs, task kinds, or handoff schema ids beyond
   those used above (`route`, `handoff-check`, `gate`).
