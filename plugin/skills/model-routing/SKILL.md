@@ -18,7 +18,48 @@ It returns `{ tier, model, reason }`. Prefer this over hardcoding a model name �
 the routing table is owned by the deterministic core, and `spin route` is what the
 harness protocol calls in step 2 when a worker's model hint is absent.
 
-## The tier table
+## Two axes: orchestration tier vs model tier
+
+There are **two** routing decisions, and they are independent:
+
+1. **Orchestration tier (T0/T1/T2)** — *how much orchestration the whole task
+   deserves.* Main loop, one agent, or a fan-out with an adversary. Decide this
+   **first**, before spawning anything. Ask the CLI: `spin tier`.
+2. **Model tier (Haiku/Sonnet/Opus)** — *which model a given agent runs on.* Only
+   relevant once you have decided to spawn an agent. Ask: `spin route <kind>`.
+
+The expensive mistake is treating a T0/T1 task as T2 — firing a multi-agent
+fan-out + adversary at something the main loop or a single pass would have done.
+
+```
+spin tier [--risk low|medium|high] [--breadth single|few|many] \
+          [--have-context] [--mechanical] [--reversible|--irreversible]
+# -> { decision: { tier, orchestration, agents, adversary, budgetCap, reason } }
+```
+
+| Tier | When | Orchestration |
+|---|---|---|
+| **T0** | rename, config, one doc from an existing result, a lookup, mechanical edit | main loop — **0 agents**, no adversary |
+| **T1** | one analysis/file/review; OR planning/audit of a project whose context I already hold | **one agent** (cheapest model that works); draft in the main loop if context is held; no fan-out; at most one adversary if the output is consequential |
+| **T2** | architecture, security-critical, irreversible, or broad discovery across unfamiliar material | **fan-out** for discovery with SHARED context; adversary on **critical items only**; **budget cap required** |
+
+**The re-derivation rule (load-bearing).** Fan-out is for **discovery** — covering
+material you do *not* yet hold. If the source is already a backlog/state doc, or
+the context is already in hand, the task is **re-derivation, not discovery → T1**.
+Never spawn N agents to re-read the same large docs. (Real miss: ~1.2M tokens /
+6 auditors to plan a project whose backlog doc already held the answer and whose
+context was already in memory — the right size was ~250k, one draft + one
+adversary.) `spin tier --have-context --breadth many` returns **T1**, not T2.
+
+**Selective adversary.** Even at T2, the adversary runs on the *critical* items,
+not uniformly on every artifact. Passing an Opus adversary over a trivial template
+port is waste. (Real miss: an adversary on each of 33 files, several trivial.)
+
+**"Ultra" modes are opt-in, not default.** An ultra/exhaustive directive means
+*be thorough where it matters* — it does **not** mean "fan out on everything".
+Still triage by tier; a T0/T1 task stays lean even under an ultra flag.
+
+## The model tier table
 
 Default to the **cheapest tier that VERIFIABLY does the task**. A tier is cheap
 enough when a deterministic gate (or the handoff schema check inside

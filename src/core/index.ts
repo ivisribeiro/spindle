@@ -10,3 +10,4 @@ export * from './validation/frontmatter.js';
 export * from './handoff/schemas.js';
 export * from './handoff/handoff-check.js';
 export * from './model-route/policy.js';
+export * from './model-route/tiers.js';

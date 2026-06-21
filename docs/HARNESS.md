@@ -252,7 +252,8 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js <args>
 | `spin diff-criteria --define f --build f` | set-diff DEFINE criteria vs BUILD passed → `unmet[]` |
 | `spin handoff-check <schemaId> <file.json>` | standalone handoff validation |
 | `spin retry <id> --inc \| --ok` | retry counter vs `config.build_retry_cap`; `--ok` exits 1 at ceiling |
-| `spin route <taskKind> [--budget std\|low]` | `{ tier, model, reason }` |
+| `spin route <taskKind> [--budget std\|low]` | model tier for an agent: `{ tier, model, reason }` |
+| `spin tier [--risk \| --breadth \| --have-context \| --mechanical \| --reversible \| --irreversible]` | orchestration tier T0/T1/T2 — how much orchestration the whole task deserves (main loop / one agent / fan-out) |
 | `spin kinds` | list the known routing task-kinds |
 | `spin schema show\|validate` | inspect / Zod-validate the active editable schema |
 

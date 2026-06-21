@@ -44,8 +44,17 @@ falsificável que nomeia comando/arquivo (bloqueia regex vago); (b) flag task L/
 bundla >1 subsistema → split obrigatório; (c) set-diff `gaps(blocking)`→tasks, exit 1 em
 gap blocking órfão. **Mecaniza os passos `tooCoarse` + `omissions` do adversário.**
 
-### I6 — Gate de CUSTO / budget-aware routing (a lição desta sessão)
-**Problema:** nesta sessão gastamos ~8,8M tokens, muito em tarefas que não justificavam
+### I6 — Gate de CUSTO / budget-aware routing (a lição desta sessão) — ✅ IMPLEMENTADO 2026-06-21
+**Implementação:** `src/core/model-route/tiers.ts` (classificador puro `classifyTier`,
+9 testes), comando `spin tier` (advisor determinístico T0/T1/T2 por sinais:
+risk/breadth/have-context/mechanical/reversible), e a doutrina na skill
+`model-routing` (seção "Two axes" + a regra de re-derivação + adversário seletivo +
+"ultra é opt-in"). A decisão de ORQUESTRAÇÃO virou eixo de primeira classe, ortogonal
+ao tier de modelo. `spin tier --have-context --breadth many` → T1 (não T2) codifica a
+lição erin. Faltou só (parcial): enforcement de budget cap dentro de workflow é
+doutrina (a skill), não código — a CLI aconselha, o comando obedece.
+
+**Problema (original):** nesta sessão gastamos ~8,8M tokens, muito em tarefas que não justificavam
 fan-out + adversário (o content workflow: 33 arquivos × 3 agentes, vários triviais). A
 própria doutrina de routing do Spindle ("tier mais barato que verificavelmente faz") não
 estava sendo aplicada à DECISÃO DE ORQUESTRAÇÃO, só à escolha de modelo por agente.

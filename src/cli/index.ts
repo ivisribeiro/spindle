@@ -13,6 +13,7 @@ import {
   handoffCheckHandler,
   retryHandler,
   routeHandler,
+  tierHandler,
   schemaHandler,
   listTaskKindsHandler,
   type HandlerResult,
@@ -124,6 +125,19 @@ export async function runCli(
     .option('--budget <level>', 'std | low', 'std')
     .action(function (this: Command, taskKind, opts) {
       emit(routeHandler(taskKind, opts));
+    });
+
+  program
+    .command('tier')
+    .description('classify a task into an orchestration tier (T0/T1/T2) from its signals')
+    .option('--risk <level>', 'low | medium | high', undefined)
+    .option('--breadth <n>', 'single | few | many', undefined)
+    .option('--mechanical', 'mechanical/template work (rename, config, doc from a result)')
+    .option('--have-context', 'I already hold the material/context (re-derivation, not discovery)')
+    .option('--reversible', 'the action is easily reversible')
+    .option('--irreversible', 'the action is hard to reverse (deploy, delete, publish)')
+    .action(function (this: Command, opts) {
+      emit(tierHandler(opts));
     });
 
   program

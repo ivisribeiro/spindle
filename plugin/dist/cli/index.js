@@ -21239,6 +21239,62 @@ function listTaskKinds() {
   return Object.keys(TASK_KINDS).sort();
 }
 
+// src/core/model-route/tiers.ts
+var TIER_SHAPE = {
+  T0: {
+    tier: "T0",
+    orchestration: "main loop \u2014 do it directly, no subagents",
+    agents: "0",
+    adversary: "none",
+    budgetCap: "n/a"
+  },
+  T1: {
+    tier: "T1",
+    orchestration: "one agent (cheapest model that works), or draft in the main loop when context is already held; no fan-out",
+    agents: "1 (+ at most 1 adversary if the output is consequential)",
+    adversary: "optional-single",
+    budgetCap: "recommended"
+  },
+  T2: {
+    tier: "T2",
+    orchestration: "fan-out for genuine discovery with SHARED context; adversary on critical items only",
+    agents: "many (bounded)",
+    adversary: "selective",
+    budgetCap: "required"
+  }
+};
+function decide(tier, reason) {
+  return { ...TIER_SHAPE[tier], reason };
+}
+function classifyTier(signals = {}) {
+  const reversible = signals.reversible !== false;
+  const risk = signals.risk ?? "medium";
+  const breadth = signals.breadth ?? "few";
+  const haveContext = signals.haveContext === true;
+  if (signals.mechanical === true || haveContext && breadth === "single" && risk === "low" && reversible) {
+    return decide("T0", "mechanical or a trivial lookup \u2014 the main loop does it directly");
+  }
+  if (risk === "high" || !reversible) {
+    return decide(
+      "T2",
+      "high-stakes or irreversible \u2014 fan out and adversarially verify the critical items"
+    );
+  }
+  if (haveContext) {
+    return decide(
+      "T1",
+      "context already held \u2014 this is re-derivation, not discovery; draft in the main loop + at most one adversary, never N agents re-reading the same material"
+    );
+  }
+  if (breadth === "many") {
+    return decide(
+      "T2",
+      "broad discovery across material not yet held \u2014 fan out to cover it, share context, cap the budget"
+    );
+  }
+  return decide("T1", "substantive but bounded \u2014 a single agent on the cheapest model that works");
+}
+
 // src/commands/handlers.ts
 function ok(json) {
   return { code: 0, json };
@@ -21422,6 +21478,20 @@ function routeHandler(kind, opts) {
     return usage(`${e.message}`);
   }
 }
+var RISKS = ["low", "medium", "high"];
+var BREADTHS = ["single", "few", "many"];
+function tierHandler(opts) {
+  if (opts.risk && !RISKS.includes(opts.risk)) return usage(`--risk must be one of: ${RISKS.join(", ")}`);
+  if (opts.breadth && !BREADTHS.includes(opts.breadth)) return usage(`--breadth must be one of: ${BREADTHS.join(", ")}`);
+  const signals = {
+    mechanical: opts.mechanical === true,
+    risk: opts.risk,
+    breadth: opts.breadth,
+    haveContext: opts.haveContext === true,
+    reversible: opts.irreversible === true ? false : opts.reversible === true ? true : void 0
+  };
+  return ok({ signals, decision: classifyTier(signals) });
+}
 function schemaHandler(root, action) {
   const schemaPath = runStateExists(root) ? schemaCopyPath(root) : null;
   if (action === "show") {
@@ -21491,6 +21561,9 @@ async function runCli(argv, write = (chunk) => process.stdout.write(chunk)) {
   });
   program2.command("route <taskKind>").option("--budget <level>", "std | low", "std").action(function(taskKind, opts) {
     emit(routeHandler(taskKind, opts));
+  });
+  program2.command("tier").description("classify a task into an orchestration tier (T0/T1/T2) from its signals").option("--risk <level>", "low | medium | high", void 0).option("--breadth <n>", "single | few | many", void 0).option("--mechanical", "mechanical/template work (rename, config, doc from a result)").option("--have-context", "I already hold the material/context (re-derivation, not discovery)").option("--reversible", "the action is easily reversible").option("--irreversible", "the action is hard to reverse (deploy, delete, publish)").action(function(opts) {
+    emit(tierHandler(opts));
   });
   program2.command("kinds").description("list known routing task-kinds").action(function() {
     emit(listTaskKindsHandler());

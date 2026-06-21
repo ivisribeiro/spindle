@@ -23,6 +23,7 @@ import { checkHandoffFile } from '../core/handoff/handoff-check.js';
 import { criteriaDiff } from '../core/validation/criteria-diff.js';
 import { validateSections, hasManifestTable, extractCriteriaIds } from '../core/validation/md-section-validator.js';
 import { route, listTaskKinds, type Budget } from '../core/model-route/policy.js';
+import { classifyTier, type TierSignals, type Risk, type Breadth } from '../core/model-route/tiers.js';
 
 // Each handler returns a HandlerResult; the CLI prints `json` and exits `code`.
 // Exit-code ABI: 0 pass · 1 gate-blocked/invalid · 2 usage · 3 internal.
@@ -253,6 +254,29 @@ export function routeHandler(kind: string, opts: { budget?: string }): HandlerRe
   } catch (e) {
     return usage(`${(e as Error).message}`);
   }
+}
+
+const RISKS = ['low', 'medium', 'high'];
+const BREADTHS = ['single', 'few', 'many'];
+
+export function tierHandler(opts: {
+  risk?: string;
+  breadth?: string;
+  reversible?: boolean;
+  irreversible?: boolean;
+  haveContext?: boolean;
+  mechanical?: boolean;
+}): HandlerResult {
+  if (opts.risk && !RISKS.includes(opts.risk)) return usage(`--risk must be one of: ${RISKS.join(', ')}`);
+  if (opts.breadth && !BREADTHS.includes(opts.breadth)) return usage(`--breadth must be one of: ${BREADTHS.join(', ')}`);
+  const signals: TierSignals = {
+    mechanical: opts.mechanical === true,
+    risk: opts.risk as Risk | undefined,
+    breadth: opts.breadth as Breadth | undefined,
+    haveContext: opts.haveContext === true,
+    reversible: opts.irreversible === true ? false : opts.reversible === true ? true : undefined,
+  };
+  return ok({ signals, decision: classifyTier(signals) });
 }
 
 export function schemaHandler(root: string, action: string): HandlerResult {
