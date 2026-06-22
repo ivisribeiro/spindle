@@ -112,6 +112,40 @@ Never parse prose to decide flow. The exit code is the ABI.
 Deterministic decisions live in `spin`. Authoring lives in workers. Control flow is
 nothing but branching on exit codes.
 
+## Measurement — feed and surface the run-ledger
+
+The protocol above also leaves a recorded trajectory in `run.json` (`events[]`). Two
+small habits make that ledger useful — both stay on the deterministic side of the seam,
+so neither weakens the invariant:
+
+1. **Stamp usage on the handoff sidecar.** When a worker writes its `.json` sidecar, have
+   it add an optional top-level `usage` object next to the schema fields:
+
+   ```json
+   { "feature": "...", "criteria": ["AC-1"], "usage": { "tier": "opus" } }
+   ```
+
+   The artifact schema strips unknown keys, so this never affects handoff validation;
+   `spin complete --handoff` records `usage` opaquely into the ledger. The **`tier`** the
+   worker ran on is the reliable field to always include (`tokens_in`/`tokens_out` are
+   best-effort if known). The CLI only RECORDS these numbers — it never tokenizes,
+   estimates, or prices them. Without this stamp, the ledger's token/tier accounting stays
+   empty.
+
+2. **Surface the run at boundaries.** After a phase gate (or at the end of a run), a
+   command MAY call the measurement reads — they are pure, exit `0`, and never gate:
+
+   ```bash
+   spin trace                 # the events[] timeline + tier histogram + summed tokens
+   spin budget --max-tokens 200000   # reported spend per tier vs an advisory ceiling
+   ```
+
+   `spin budget` is **advisory** — it flags `over_budget` but always exits `0` (a genuinely
+   T2 task should cost a lot; cost never blocks correct work). See `docs/MEASUREMENT.md`.
+
+This is the "measured harness": routing predicts, gates block, and the ledger + `spin
+trace`/`spin eval`/`spin budget` measure whether either was right — all offline, no model.
+
 ## Sidecar handoff vs human markdown
 
 Every worker produces **both**, and they serve different masters:
@@ -215,3 +249,4 @@ different artifact, handoff schema id, and gate id.
 - [ ] Retry loop bounded by `spin retry <id> --inc` / `--ok` against `build_retry_cap`.
 - [ ] Branches strictly on exit codes (0/1/2/3); surfaces `{reasons, unmet}` on a blocked gate.
 - [ ] Runs the correct `spin gate <gateId>` at every phase boundary and stops on exit 1.
+- [ ] Workers stamp `usage:{tier}` on the handoff sidecar; surfaces `spin trace` (and `spin budget`) at the run boundary so the ledger is fed and visible.
