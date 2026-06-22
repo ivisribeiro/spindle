@@ -57,4 +57,15 @@ describe('spin eval — the harness evaluating itself (Fase 2)', () => {
     const r = await cli(['eval', '--corpus', '/no/such/corpus/here']);
     expect(r.code).toBe(2);
   });
+
+  it('handles a corrupt case.json gracefully — an error result, exit 1, never a crash (exit 3)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'spin-eval-'));
+    const caseDir = path.join(dir, 'broken');
+    fs.mkdirSync(caseDir, { recursive: true });
+    fs.writeFileSync(path.join(caseDir, 'case.json'), '{ not valid json');
+    const r = await cli(['eval', '--corpus', dir]);
+    expect(r.code).toBe(1); // a bad fixture is a caught regression, not an internal crash
+    expect(r.json.results.some((x: any) => x.actual === 'error')).toBe(true);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
 });

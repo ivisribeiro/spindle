@@ -87,6 +87,34 @@ describe('G_DESIGN', () => {
     writeHandoff('design', { feature: 'feat', manifest: [{ file: 'a.ts', action: 'create', purpose: 'p' }] });
     expect(gDesign(ctx).passed).toBe(true);
   });
+
+  it('blocks when the DESIGN artifact is absent on disk', () => {
+    const r = gDesign(ctx);
+    expect(r.passed).toBe(false);
+    expect(r.unmet).toContain('DESIGN.md');
+  });
+
+  it('blocks when a required section is missing', () => {
+    writeArtifact(
+      'DESIGN.md',
+      '## Overview\nx\n## File Manifest\n\n| File | Action | Purpose |\n| --- | --- | --- |\n| a.ts | create | p |\n'
+    ); // no Decisions section
+    writeHandoff('design', { feature: 'feat', manifest: [{ file: 'a.ts', action: 'create', purpose: 'p' }] });
+    const r = gDesign(ctx);
+    expect(r.passed).toBe(false);
+    expect(r.unmet).toContain('section:Decisions');
+  });
+
+  it('blocks when the design handoff is invalid', () => {
+    writeArtifact(
+      'DESIGN.md',
+      '## Overview\nx\n## File Manifest\n\n| File | Action | Purpose |\n| --- | --- | --- |\n| a.ts | create | p |\n\n## Decisions\nd\n'
+    );
+    writeHandoff('design', { feature: 'feat', manifest: [] }); // empty manifest is invalid
+    const r = gDesign(ctx);
+    expect(r.passed).toBe(false);
+    expect(r.unmet).toContain('handoff:design');
+  });
 });
 
 describe('G_BUILD (replaces the prose checkbox)', () => {
