@@ -100,6 +100,21 @@ A critic that only refutes what is written misses the most expensive class of fl
 
 Unanswered items become `finding` entries. Track the invariants explicitly — isolation, idempotency, concurrency-safety — so "acknowledged in a comment but no test asserts it" becomes a typed, plannable item rather than buried prose.
 
+## Cross-vendor critic (native, optional)
+
+The critics above are Claude subagents. Spindle ships one critic from a different vendor:
+the `/codex-review` command runs the codex (OpenAI) CLI directly (via
+`scripts/codex-review.sh`), adapts its output into a `finding` sidecar with `source: codex`,
+and feeds it to the SAME `G_REVIEW_BLOCK`. A different vendor judging the code Claude wrote
+is the strongest form of "the verifier is not the generator" — it catches the correlated
+blind spots a single model has about its own work.
+
+It is **opt-in and fail-open**: if the codex CLI is not installed, `/codex-review` reports a
+skip and you fall back to the Claude-side panel above — never a block. And the verdict is
+still Spindle's: the codex output becomes typed findings, and the deterministic
+`G_REVIEW_BLOCK` decides — never codex's own stop behavior. The codex invocation lives in
+the script (the model side); the spin spine never calls it.
+
 ## Anti-patterns
 
 - **Shared-context critics** — reusing one chat thread or piping critic A's output into critic B destroys independence (rule 1). Always separate Task dispatches seeing only the artifact.
