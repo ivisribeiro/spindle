@@ -20389,6 +20389,15 @@ var ArtifactGraph = class _ArtifactGraph {
     }
     return [...target].sort();
   }
+  /** Gate ids that must be recorded green in the ledger BEFORE this artifact may be
+   *  completed, read from the schema's `gates:` lifecycle map (key `before_<id>`).
+   *  Empty when the schema declares none. Makes the lifecycle gate map enforceable
+   *  instead of prose-only. */
+  getRequiredGatesBefore(artifactId) {
+    const entry = this.schema.gates?.[`before_${artifactId}`];
+    if (!entry) return [];
+    return Array.isArray(entry) ? entry : [entry];
+  }
   isComplete(completed) {
     for (const artifact of this.artifacts.values()) {
       if (!completed.has(artifact.id)) return false;
@@ -21085,6 +21094,11 @@ function gBuild(ctx) {
       reasons.push(`acceptance criterion ${r.criterion} is passed but cites no verifier (config.require_verified_by)`);
       unmet.push(`missing-verifier:${r.criterion}`);
     }
+  }
+  const cov = buildRes?.coverage;
+  if (cov && typeof cov.pct === "number" && typeof cov.threshold === "number" && cov.pct < cov.threshold) {
+    reasons.push(`test coverage ${cov.pct}% is below the required threshold ${cov.threshold}%${cov.tool ? ` (${cov.tool})` : ""}`);
+    unmet.push("coverage-below-threshold");
   }
   return unmet.length === 0 ? pass(gate, ["build verified"]) : block(gate, reasons, unmet);
 }
@@ -22527,6 +22541,22 @@ function completeHandler(root, id, opts) {
   const graph = activeGraph(root);
   const artifact = graph.getArtifact(id);
   if (!artifact) return usage(`unknown artifact "${id}"`);
+  const requiredGates = graph.getRequiredGatesBefore(id);
+  if (requiredGates.length > 0) {
+    const ledger = loadRunState(root);
+    const unmet = requiredGates.filter((g) => ledger.gates[g]?.passed !== true);
+    if (unmet.length > 0) {
+      return blocked({
+        gate: "lifecycle",
+        passed: false,
+        artifact: id,
+        reasons: unmet.map(
+          (g) => `cannot complete "${id}": required gate ${g} has not passed \u2014 run \`spin gate ${g}\` first`
+        ),
+        unmet
+      });
+    }
+  }
   if (artifact.handoff) {
     if (!opts.handoff) {
       return usage(`artifact "${id}" requires --handoff <file.json> (schema: ${artifact.handoff})`);
@@ -22543,8 +22573,7 @@ function completeHandler(root, id, opts) {
     }
     const state2 = loadRunState(root);
     const dest = path10.join(handoffDir(root, state2.feature), `${id}.json`);
-    fs15.mkdirSync(path10.dirname(dest), { recursive: true });
-    fs15.writeFileSync(dest, JSON.stringify(check.data, null, 2) + "\n");
+    atomicWrite(dest, JSON.stringify(check.data, null, 2) + "\n");
   }
   let reportedUsage;
   if (opts.handoff && fs15.existsSync(opts.handoff)) {

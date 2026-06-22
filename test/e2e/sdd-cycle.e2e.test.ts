@@ -109,6 +109,32 @@ describe('E2E: full SDD cycle through the spin CLI', () => {
     expect(state.json.gates.G_SHIP.passed).toBe(true);
   });
 
+  it('blocks completing design until G_DEFINE has passed (lifecycle gate enforcement)', async () => {
+    await R('init', '--schema', 'sdd', '--feature', 'lc');
+    write(root, '.spindle/features/lc/DEFINE.md', '## Why\nx\n## What\ny\n## Acceptance Criteria\n- AC-1 a\n');
+    const dh = writeJson(root, 'work/define.json', { feature: 'lc', clarity: 0.9, criteria: ['AC-1'] });
+    expect((await R('complete', 'define', '--handoff', dh)).code).toBe(0);
+
+    write(
+      root,
+      '.spindle/features/lc/DESIGN.md',
+      '## Overview\no\n## File Manifest\n\n| File | Action | Purpose |\n| --- | --- | --- |\n| src/a.ts | create | x |\n\n## Decisions\nd\n'
+    );
+    const gh = writeJson(root, 'work/design.json', {
+      feature: 'lc',
+      manifest: [{ file: 'src/a.ts', action: 'create', purpose: 'x' }],
+      decisions: [],
+    });
+    // completing design BEFORE G_DEFINE has passed must block (exit 1) — the lifecycle gate
+    const blockedComplete = await R('complete', 'design', '--handoff', gh);
+    expect(blockedComplete.code).toBe(1);
+    expect(blockedComplete.json.unmet).toContain('G_DEFINE');
+
+    // run G_DEFINE green, then design completes
+    expect((await R('gate', 'G_DEFINE')).code).toBe(0);
+    expect((await R('complete', 'design', '--handoff', gh)).code).toBe(0);
+  });
+
   it('blocks ship when an acceptance criterion was never satisfied', async () => {
     await R('init', '--schema', 'sdd', '--feature', 'partial');
     const defineHandoff = writeJson(root, 'work/define.json', {

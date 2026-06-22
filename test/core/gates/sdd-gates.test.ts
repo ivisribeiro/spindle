@@ -271,6 +271,34 @@ describe('G_BUILD (replaces the prose checkbox)', () => {
       expect(gBuild(ctx).passed, `verified_by=${v} should not false-block`).toBe(true);
     }
   });
+
+  it('BLOCKS when reported test coverage is below its threshold (coverage floor)', () => {
+    buildAllFiles();
+    writeHandoff('build', {
+      feature: 'feat',
+      results: [
+        { criterion: 'AC-1', status: 'passed' },
+        { criterion: 'AC-2', status: 'passed' },
+      ],
+      coverage: { tool: 'vitest', pct: 50, threshold: 80 },
+    });
+    const r = gBuild(ctx);
+    expect(r.passed).toBe(false);
+    expect(r.unmet).toContain('coverage-below-threshold');
+  });
+
+  it('PASSES when reported coverage meets its threshold', () => {
+    buildAllFiles();
+    writeHandoff('build', {
+      feature: 'feat',
+      results: [
+        { criterion: 'AC-1', status: 'passed' },
+        { criterion: 'AC-2', status: 'passed' },
+      ],
+      coverage: { tool: 'vitest', pct: 92, threshold: 80 },
+    });
+    expect(gBuild(ctx).passed).toBe(true);
+  });
 });
 
 describe('G_SHIP', () => {

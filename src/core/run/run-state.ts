@@ -43,7 +43,7 @@ function nowIso(): string {
 }
 
 /** Atomic write: write to a temp file then rename (rename is atomic on POSIX). */
-function atomicWrite(filePath: string, content: string): void {
+export function atomicWrite(filePath: string, content: string): void {
   const dir = path.dirname(filePath);
   fs.mkdirSync(dir, { recursive: true });
   const tmp = path.join(dir, `.${path.basename(filePath)}.tmp-${process.pid}`);

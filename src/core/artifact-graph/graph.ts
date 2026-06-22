@@ -116,6 +116,16 @@ export class ArtifactGraph {
     return [...target].sort();
   }
 
+  /** Gate ids that must be recorded green in the ledger BEFORE this artifact may be
+   *  completed, read from the schema's `gates:` lifecycle map (key `before_<id>`).
+   *  Empty when the schema declares none. Makes the lifecycle gate map enforceable
+   *  instead of prose-only. */
+  getRequiredGatesBefore(artifactId: string): string[] {
+    const entry = this.schema.gates?.[`before_${artifactId}`];
+    if (!entry) return [];
+    return Array.isArray(entry) ? entry : [entry];
+  }
+
   isComplete(completed: CompletedSet): boolean {
     for (const artifact of this.artifacts.values()) {
       if (!completed.has(artifact.id)) return false;

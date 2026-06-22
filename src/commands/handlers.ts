@@ -19,6 +19,7 @@ import {
   featureDir,
   handoffDir,
   schemaCopyPath,
+  atomicWrite,
 } from '../core/run/run-state.js';
 import { Usage, type RunEvent } from '../core/run/run-state.schema.js';
 import { buildGateContext, runGate } from '../core/gates/gate-runner.js';
@@ -363,6 +364,27 @@ export function completeHandler(
   const artifact = graph.getArtifact(id);
   if (!artifact) return usage(`unknown artifact "${id}"`);
 
+  // Lifecycle gate enforcement — the seam made hard. An artifact cannot be marked
+  // complete until the gate(s) the schema's `gates:` map requires BEFORE it are
+  // recorded green in the ledger. Closes the hole where a command that skipped
+  // `spin gate` advanced state unobstructed (the map used to be prose-only).
+  const requiredGates = graph.getRequiredGatesBefore(id);
+  if (requiredGates.length > 0) {
+    const ledger = loadRunState(root);
+    const unmet = requiredGates.filter((g) => ledger.gates[g]?.passed !== true);
+    if (unmet.length > 0) {
+      return blocked({
+        gate: 'lifecycle',
+        passed: false,
+        artifact: id,
+        reasons: unmet.map(
+          (g) => `cannot complete "${id}": required gate ${g} has not passed — run \`spin gate ${g}\` first`
+        ),
+        unmet,
+      });
+    }
+  }
+
   if (artifact.handoff) {
     if (!opts.handoff) {
       return usage(`artifact "${id}" requires --handoff <file.json> (schema: ${artifact.handoff})`);
@@ -380,8 +402,9 @@ export function completeHandler(
     // Persist the validated handoff canonically so gates read it deterministically.
     const state = loadRunState(root);
     const dest = path.join(handoffDir(root, state.feature), `${id}.json`);
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.writeFileSync(dest, JSON.stringify(check.data, null, 2) + '\n');
+    // Atomic write (tmp + rename) so a crash mid-write can't leave a partial handoff
+    // that the gates would then read as invalid JSON — matches the run-ledger's writes.
+    atomicWrite(dest, JSON.stringify(check.data, null, 2) + '\n');
   }
 
   // Opaque, model-reported usage rides on the sidecar's optional top-level `usage`

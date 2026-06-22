@@ -121,6 +121,9 @@ interface BuildResults {
     verified_by?: string;
     verified_by_result?: 'passed' | 'failed';
   }>;
+  // Optional CI-produced coverage summary (BuildReportHandoff.coverage). When present and
+  // below its own threshold, G_BUILD blocks — the schema field is no longer inert.
+  coverage?: { tool?: string; pct?: number; threshold?: number };
 }
 
 /**
@@ -220,6 +223,15 @@ export function gBuild(ctx: GateContext): GateResult {
       reasons.push(`acceptance criterion ${r.criterion} is passed but cites no verifier (config.require_verified_by)`);
       unmet.push(`missing-verifier:${r.criterion}`);
     }
+  }
+
+  // Coverage floor — when the CI-populated coverage summary is present and below its own
+  // threshold, block. Additive: a build-report without `coverage` is unaffected (the field
+  // is optional and stops being a dead schema promise only when actually reported).
+  const cov = buildRes?.coverage;
+  if (cov && typeof cov.pct === 'number' && typeof cov.threshold === 'number' && cov.pct < cov.threshold) {
+    reasons.push(`test coverage ${cov.pct}% is below the required threshold ${cov.threshold}%${cov.tool ? ` (${cov.tool})` : ''}`);
+    unmet.push('coverage-below-threshold');
   }
 
   return unmet.length === 0 ? pass(gate, ['build verified']) : block(gate, reasons, unmet);
