@@ -228,15 +228,28 @@ describe('G_BUILD (replaces the prose checkbox)', () => {
 });
 
 describe('G_SHIP', () => {
+  const approve = () => {
+    ctx.runState = { approval: { at: '2026-01-01T00:00:00.000Z', by: 'tester' } } as unknown as typeof ctx.runState;
+  };
+
+  it('blocks when criteria are met but there is no human approval (A1)', () => {
+    writeHandoff('define', { feature: 'feat', clarity: 1, criteria: ['AC-1'] });
+    writeHandoff('build', { feature: 'feat', results: [{ criterion: 'AC-1', status: 'passed' }] });
+    const r = gShip(ctx);
+    expect(r.passed).toBe(false);
+    expect(r.unmet).toContain('approval');
+  });
+
   it('blocks on any unmet acceptance criterion', () => {
     writeHandoff('define', { feature: 'feat', clarity: 1, criteria: ['AC-1', 'AC-2'] });
     writeHandoff('build', { feature: 'feat', results: [{ criterion: 'AC-1', status: 'passed' }] });
     expect(gShip(ctx).passed).toBe(false);
   });
 
-  it('passes when all criteria are met', () => {
+  it('passes when all criteria are met and a human approved', () => {
     writeHandoff('define', { feature: 'feat', clarity: 1, criteria: ['AC-1'] });
     writeHandoff('build', { feature: 'feat', results: [{ criterion: 'AC-1', status: 'passed' }] });
+    approve();
     expect(gShip(ctx).passed).toBe(true);
   });
 
@@ -262,6 +275,7 @@ describe('G_SHIP', () => {
         { criterion: 'AC-1', status: 'passed', corrected_spec: true, correction: 'CRC 29B1 not 1D3D' },
       ],
     });
+    approve();
     const r = gShip(ctx);
     expect(r.passed).toBe(true); // a legitimate correction does not block ship
     expect(r.reasons.some((x) => x.includes('CORRECTED') && x.includes('AC-1'))).toBe(true);

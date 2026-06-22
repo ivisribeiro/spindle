@@ -6,6 +6,7 @@ import {
   initRunState,
   loadRunState,
   markComplete,
+  markApproved,
   markIncomplete,
   incRetry,
   getRetry,
@@ -112,5 +113,18 @@ describe('run-state ledger', () => {
     recordGate(root, 'G_BUILD', { passed: true, reasons: [] }); // changed → new event
     const ev = loadRunState(root).events.filter((e) => e.kind === 'gate');
     expect(ev.map((e) => (e as { passed: boolean }).passed)).toEqual([false, true]);
+  });
+
+  it('records human approval + an approve event; re-gate (markIncomplete) clears it', () => {
+    initRunState(root, 'sdd', 'feat');
+    expect(loadRunState(root).approval).toBe(null);
+    markApproved(root, 'ivis');
+    let s = loadRunState(root);
+    expect(s.approval?.by).toBe('ivis');
+    expect(s.events.some((e) => e.kind === 'approve')).toBe(true);
+    markComplete(root, 'design');
+    markIncomplete(root, ['design']); // work changed since approval → approval is stale
+    s = loadRunState(root);
+    expect(s.approval).toBe(null);
   });
 });

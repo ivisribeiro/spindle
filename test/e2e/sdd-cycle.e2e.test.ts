@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import { cli, tmpProject, write, writeJson } from '../helpers.js';
+import { markApproved } from '../../src/core/run/run-state.js';
 
 // THE deliverable test. Drives the full 5-phase SDD cycle through the real CLI,
 // simulating the model layer with deterministic fixture files. Proves the harness
@@ -91,6 +92,9 @@ describe('E2E: full SDD cycle through the spin CLI', () => {
     const diff = await R('diff-criteria', '--define', defineHandoff, '--build', buildHandoff);
     expect(diff.code).toBe(0);
     expect(diff.json.unmet).toEqual([]);
+    // human sign-off — `spin approve` is TTY-gated (no TTY in the test runner), so record
+    // it directly; G_SHIP requires it.
+    markApproved(root, 'tester');
     expect((await R('gate', 'G_SHIP')).code).toBe(0);
 
     write(root, '.spindle/features/sample/SHIPPED.md', '# shipped\n');

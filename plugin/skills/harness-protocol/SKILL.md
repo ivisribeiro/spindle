@@ -172,7 +172,7 @@ Run with `spin gate <gateId>`:
 | `G_DEFINE` | before `/design` | DEFINE sections / `AC-n` ids / define handoff invalid |
 | `G_DESIGN` | before `/build` | manifest table / design handoff invalid |
 | `G_BUILD` | before `/ship` | a manifest file is missing on disk, criteria-diff non-empty, or no BUILD_REPORT |
-| `G_SHIP` | ship | `define.criteria` minus `build.passed` is non-empty |
+| `G_SHIP` | ship | `define.criteria` minus `build.passed` is non-empty, OR no human approval is recorded (run `spin approve` — an agent cannot) |
 | `G_KB_STRUCTURE`, `G_KB_COVERAGE` | KB schema | structure / coverage shortfalls |
 | `G_ROUTER_COVERAGE` | router | agent→routing not a bijection (silent skips) |
 | `G_REVIEW_BLOCK` | `/review`, `/migrate` | surviving CRITICAL findings > 0 |

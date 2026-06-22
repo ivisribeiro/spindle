@@ -96,9 +96,20 @@ export function initRunState(root: string, schema: string, feature: string): Run
     retries: {},
     gates: {},
     events: [],
+    approval: null,
     createdAt: ts,
     updatedAt: ts,
   };
+  return saveRunState(root, state);
+}
+
+/** Record human sign-off. Called by `spin approve`, which gates on an interactive TTY
+ *  so an automated agent cannot reach this path. G_SHIP requires the result. */
+export function markApproved(root: string, by: string): RunState {
+  const state = loadRunState(root);
+  const at = nowIso();
+  state.approval = { at, by };
+  state.events = [...state.events, { kind: 'approve', at, by }];
   return saveRunState(root, state);
 }
 
@@ -117,8 +128,9 @@ export function markIncomplete(root: string, ids: string[]): RunState {
   const state = loadRunState(root);
   const drop = new Set(ids);
   state.completed = state.completed.filter((c) => !drop.has(c));
-  // Re-gating: drop any gate records that referenced dropped artifacts is the
-  // caller's concern; here we just clear the completed flags.
+  // Re-gating invalidates a prior human sign-off — work changed since approval, so the
+  // approval is stale and G_SHIP must require a fresh `spin approve`.
+  if (ids.length > 0) state.approval = null;
   return saveRunState(root, state);
 }
 

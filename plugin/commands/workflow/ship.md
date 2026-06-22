@@ -37,7 +37,12 @@ If `unmet[]` is non-empty → surface the unmet criteria to the user and STOP. D
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js gate G_SHIP
 ```
 
-Exit 1 → STOP. Surface `reasons` and `unmet`. The define.criteria minus build.passed set is non-empty — the build did not satisfy all acceptance criteria. Report which criteria are unmet and halt.
+Exit 1 → STOP. Surface `reasons` and `unmet`.
+- `unmet` contains `approval` → a human has not signed off. **You (the agent) cannot
+  approve.** Tell the user to run `spin approve` themselves in their terminal, then re-run
+  `/ship`. `spin approve` refuses outside an interactive TTY, so this step is the human's.
+- Otherwise the define.criteria minus build.passed set is non-empty — the build did not
+  satisfy all acceptance criteria. Report which criteria are unmet and halt.
 
 Exit 0 → continue. **Note:** G_SHIP passes even when the build flagged a
 `corrected_spec` drift, but it appends a `⚠ … CORRECTED …` line to `reasons`.

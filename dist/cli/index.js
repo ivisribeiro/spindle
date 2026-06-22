@@ -20453,7 +20453,8 @@ var RunEvent = external_exports.discriminatedUnion("kind", [
     passed: external_exports.boolean(),
     reasons: external_exports.array(external_exports.string()).default([])
   }),
-  external_exports.object({ kind: external_exports.literal("retry"), at: external_exports.string(), id: external_exports.string(), attempt: external_exports.number().int().nonnegative() })
+  external_exports.object({ kind: external_exports.literal("retry"), at: external_exports.string(), id: external_exports.string(), attempt: external_exports.number().int().nonnegative() }),
+  external_exports.object({ kind: external_exports.literal("approve"), at: external_exports.string(), by: external_exports.string() })
 ]);
 var RunStateSchema = external_exports.object({
   version: external_exports.literal(1).default(1),
@@ -20466,6 +20467,10 @@ var RunStateSchema = external_exports.object({
   gates: external_exports.record(external_exports.string(), GateRecord).default({}),
   // Append-only trajectory. `.default([])` keeps pre-ledger run.json files valid.
   events: external_exports.array(RunEvent).default([]),
+  // Human approval (the seam applied to sign-off): set ONLY by `spin approve`, which
+  // refuses to run unless stdin is an interactive TTY — an automated agent's shell is
+  // not a TTY, so the model cannot fake it. G_SHIP requires this. Cleared on re-gate.
+  approval: external_exports.object({ at: external_exports.string(), by: external_exports.string() }).nullable().default(null),
   createdAt: external_exports.string(),
   updatedAt: external_exports.string()
 });
@@ -20543,9 +20548,17 @@ function initRunState(root, schema, feature) {
     retries: {},
     gates: {},
     events: [],
+    approval: null,
     createdAt: ts,
     updatedAt: ts
   };
+  return saveRunState(root, state);
+}
+function markApproved(root, by) {
+  const state = loadRunState(root);
+  const at = nowIso();
+  state.approval = { at, by };
+  state.events = [...state.events, { kind: "approve", at, by }];
   return saveRunState(root, state);
 }
 function markComplete(root, id, usage2) {
@@ -21050,7 +21063,17 @@ function gShip(ctx) {
       diff.extra.map((id) => `phantom:${id}`)
     );
   }
-  const reasons = [`all ${define.criteria.length} acceptance criteria met`];
+  if (!ctx.runState?.approval) {
+    return block(
+      gate,
+      ["human approval required \u2014 run `spin approve` (an automated agent cannot grant it)"],
+      ["approval"]
+    );
+  }
+  const reasons = [
+    `all ${define.criteria.length} acceptance criteria met`,
+    `approved by ${ctx.runState.approval.by}`
+  ];
   const drift = specDrift(buildRes?.results ?? []);
   if (!drift.clean) {
     reasons.push(
@@ -22620,6 +22643,17 @@ function evalHandler(opts) {
   const fail = report.regressions.length > 0 || coverageIncomplete;
   return fail ? blocked(report) : ok(report);
 }
+function approveHandler(root, opts) {
+  if (!runStateExists(root)) return usage('no run state \u2014 run "spin init" first');
+  if (!process.stdin.isTTY) {
+    return usage(
+      "approval requires an interactive human terminal \u2014 an automated agent cannot approve. Run `spin approve` yourself in a terminal before /ship."
+    );
+  }
+  const by = opts.by ?? process.env.USER ?? "human";
+  const state = markApproved(root, by);
+  return ok({ approved: true, by, at: state.approval?.at ?? null, feature: state.feature });
+}
 
 // src/cli/index.ts
 async function runCli(argv, write = (chunk) => process.stdout.write(chunk)) {
@@ -22655,6 +22689,9 @@ async function runCli(argv, write = (chunk) => process.stdout.write(chunk)) {
   });
   program2.command("complete <id>").option("--handoff <file>", "worker-output JSON sidecar to validate").action(function(id, opts) {
     emit(completeHandler(root(this), id, opts));
+  });
+  program2.command("approve").description("record human sign-off (required by G_SHIP). Refuses unless run in an interactive terminal \u2014 an agent cannot approve").option("--by <name>", "approver name (defaults to $USER)").action(function(opts) {
+    emit(approveHandler(root(this), opts));
   });
   program2.command("validate <idOrPath>").action(function(idOrPath) {
     emit(validateHandler(root(this), idOrPath));

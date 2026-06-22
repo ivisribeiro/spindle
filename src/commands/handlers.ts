@@ -8,6 +8,7 @@ import {
   initRunState,
   loadRunState,
   markComplete,
+  markApproved,
   markIncomplete,
   completedSet,
   incRetry,
@@ -588,6 +589,21 @@ export function evalHandler(opts: { corpus?: string; strict?: boolean }): Handle
   const coverageIncomplete = opts.strict === true && !report.coverage.complete;
   const fail = report.regressions.length > 0 || coverageIncomplete;
   return fail ? blocked(report) : ok(report);
+}
+
+export function approveHandler(root: string, opts: { by?: string }): HandlerResult {
+  if (!runStateExists(root)) return usage('no run state — run "spin init" first');
+  // The seam applied to sign-off: approval requires a human at an interactive TTY. An
+  // automated agent's shell is not a TTY, so the model cannot grant it. There is NO
+  // bypass flag — that is the whole point (G_SHIP depends on this being un-fakeable).
+  if (!process.stdin.isTTY) {
+    return usage(
+      'approval requires an interactive human terminal — an automated agent cannot approve. Run `spin approve` yourself in a terminal before /ship.'
+    );
+  }
+  const by = opts.by ?? process.env.USER ?? 'human';
+  const state = markApproved(root, by);
+  return ok({ approved: true, by, at: state.approval?.at ?? null, feature: state.feature });
 }
 
 export { markIncomplete };

@@ -125,6 +125,7 @@ between `src/`+`schemas/` and `plugin/`.
 | `spin fanout-check` | assert no `parallel_group` is partially complete (a dropped fan-out worker); exit 0 all-consistent / 1 partial. Run before a phase gate |
 | `spin state` | the `run.json` ledger (`completed[]`, `retries{}`, `gates{}`) |
 | `spin complete <id> [--handoff f.json]` | validate the handoff against the artifact's schema, THEN mark complete (exit 1 if invalid) |
+| `spin approve [--by <name>]` | record human sign-off (required by `G_SHIP`). REFUSES unless stdin is an interactive TTY — an automated agent cannot approve. No bypass flag |
 | `spin validate <id\|path>` | structural checks (md sections / manifest table / criteria IDs); exit 0/1 |
 | `spin gate <gateId> [--agents d] [--routing f] [--kb d] [--findings f]` | run a named gate; exit 0 pass / 1 BLOCK with `{gate,passed,reasons,unmet}`. `--kb` (default `plugin/kb`) backs G_ROUTER_COVERAGE's kb_domains referential check |
 | `spin diff-criteria --define f --build f` | set-diff DEFINE criteria vs BUILD passed -> `unmet[]` |
@@ -140,7 +141,8 @@ between `src/`+`schemas/` and `plugin/`.
 **Gate ids** (`spin gate <id>`):
 `G_DEFINE` (before /design), `G_DESIGN` (before /build), `G_BUILD` (before
 /ship — every manifest file exists on disk + criteria-diff empty + BUILD_REPORT
-exists), `G_SHIP` (define.criteria minus build.passed is empty), `G_KB_STRUCTURE`,
+exists), `G_SHIP` (define.criteria minus build.passed is empty AND a human approval is
+recorded via `spin approve` — the seam applied to sign-off: a model cannot approve), `G_KB_STRUCTURE`,
 `G_KB_COVERAGE` (every manifest concept authored + enough test cases; manifest shape
 is Zod-validated; E-1: a `needs_decoding` concept must carry a non-empty
 `decoding_note`), `G_ROUTER_COVERAGE` (agent→routing bijection, no silent skips, PLUS

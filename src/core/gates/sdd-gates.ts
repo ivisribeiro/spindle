@@ -241,7 +241,19 @@ export function gShip(ctx: GateContext): GateResult {
   // Criteria are met — but surface any spec-drift the build flagged (F6). Shipping
   // is allowed (the correction is legitimate), yet the warning is recorded loudly
   // in the gate reasons + run-state so a false DEFINE can't ride along unnoticed.
-  const reasons = [`all ${define.criteria.length} acceptance criteria met`];
+  // Final sign-off: criteria are met, but ship requires un-fakeable human approval
+  // (set only by `spin approve` at an interactive terminal — the seam applied to ship).
+  if (!ctx.runState?.approval) {
+    return block(
+      gate,
+      ['human approval required — run `spin approve` (an automated agent cannot grant it)'],
+      ['approval']
+    );
+  }
+  const reasons = [
+    `all ${define.criteria.length} acceptance criteria met`,
+    `approved by ${ctx.runState.approval.by}`,
+  ];
   const drift = specDrift(buildRes?.results ?? []);
   if (!drift.clean) {
     reasons.push(

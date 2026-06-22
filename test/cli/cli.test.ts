@@ -285,4 +285,29 @@ describe('spin CLI exit-code ABI', () => {
     const r = await cli(['--root', root, 'budget', '--max-tokens', 'lots']);
     expect(r.code).toBe(2);
   });
+
+  // --- spin approve: inviolable human sign-off (A1) ---
+
+  it('approve refuses without an interactive TTY — an agent cannot approve', async () => {
+    await cli(['--root', root, 'init', '--schema', 'sdd', '--feature', 'f']);
+    const r = await cli(['--root', root, 'approve']);
+    expect(r.code).toBe(2);
+    expect(r.json.error).toContain('interactive');
+  });
+
+  it('approve records sign-off when run from a TTY, and spin state shows it', async () => {
+    await cli(['--root', root, 'init', '--schema', 'sdd', '--feature', 'f']);
+    const orig = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    try {
+      const r = await cli(['--root', root, 'approve', '--by', 'ivis']);
+      expect(r.code).toBe(0);
+      expect(r.json.approved).toBe(true);
+      expect(r.json.by).toBe('ivis');
+    } finally {
+      if (orig) Object.defineProperty(process.stdin, 'isTTY', orig);
+    }
+    const state = await cli(['--root', root, 'state']);
+    expect(state.json.approval.by).toBe('ivis');
+  });
 });

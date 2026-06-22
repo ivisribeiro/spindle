@@ -24,6 +24,7 @@ import {
   explainHandler,
   specDriftHandler,
   evalHandler,
+  approveHandler,
   type HandlerResult,
 } from '../commands/handlers.js';
 
@@ -108,6 +109,14 @@ export async function runCli(
     .option('--handoff <file>', 'worker-output JSON sidecar to validate')
     .action(function (this: Command, id, opts) {
       emit(completeHandler(root(this), id, opts));
+    });
+
+  program
+    .command('approve')
+    .description('record human sign-off (required by G_SHIP). Refuses unless run in an interactive terminal — an agent cannot approve')
+    .option('--by <name>', 'approver name (defaults to $USER)')
+    .action(function (this: Command, opts) {
+      emit(approveHandler(root(this), opts));
     });
 
   program

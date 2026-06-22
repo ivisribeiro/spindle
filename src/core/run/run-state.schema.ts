@@ -38,6 +38,7 @@ export const RunEvent = z.discriminatedUnion('kind', [
     reasons: z.array(z.string()).default([]),
   }),
   z.object({ kind: z.literal('retry'), at: z.string(), id: z.string(), attempt: z.number().int().nonnegative() }),
+  z.object({ kind: z.literal('approve'), at: z.string(), by: z.string() }),
 ]);
 export type RunEvent = z.infer<typeof RunEvent>;
 
@@ -50,6 +51,10 @@ export const RunStateSchema = z.object({
   gates: z.record(z.string(), GateRecord).default({}),
   // Append-only trajectory. `.default([])` keeps pre-ledger run.json files valid.
   events: z.array(RunEvent).default([]),
+  // Human approval (the seam applied to sign-off): set ONLY by `spin approve`, which
+  // refuses to run unless stdin is an interactive TTY — an automated agent's shell is
+  // not a TTY, so the model cannot fake it. G_SHIP requires this. Cleared on re-gate.
+  approval: z.object({ at: z.string(), by: z.string() }).nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
