@@ -9,7 +9,7 @@
 Most spec-driven AI tools have one blind spot: when every check is green, you assume the spec is right. Spindle is built to make that assumption *testable*. Versus a file-existence model (OpenSpec):
 
 - **"Done" can be a content verdict, not just a file existing** — for any artifact whose schema declares a `handoff:`, `spin complete` refuses to mark it done unless a Zod sidecar passes, and `G_BUILD` set-diffs every acceptance criterion. It also enforces criteria-set consistency *both ways* — blocking a **phantom** AC the build certifies that DEFINE never declared (an ID-set drift the spine catches with no disclosure; note this is *not* the same as a wrong-*value* drift, which is `spec-drift`'s job) — and, *when* a `passed` criterion cites a test file via `verified_by`, requires that file to exist (opt-in, existence-only — it doesn't make evidence mandatory).
-- **The deterministic spine is a *verifiable property*** — the no-model invariant is enforced by a guard that bans all network egress, not just LLM SDKs.
+- **The deterministic spine is a *verifiable property*** — the no-model invariant is enforced by a CI guard that fails the build if `src/` references an LLM SDK (`@anthropic`, `openai`), a model-call pattern (`api.anthropic.com`, `claude -p`), `fetch(`, or a tokenizer/pricing symbol. It is a deny-list of model/network-call tells, not a proof of zero egress.
 - **The adversarial verifier outranks the generator** — on a CRITICAL gate the judging model tier is pinned ≥ the generator's and never downgrades; `G_REVIEW_BLOCK` (not the agent) decides. The verifier can even be a *different vendor*: `/codex-review` runs OpenAI Codex against Claude's code **natively** (no third-party plugin), the strongest verifier ≠ generator, feeding the same gate.
 - **Spec↔build divergence is a first-class, typed loop** (`spin spec-drift`) — a green build can't silently leave a false spec behind once the correction is disclosed.
 - **Human sign-off is the seam applied to approval** — `G_SHIP` blocks until `spin approve` records a human, and `spin approve` refuses unless stdin is an interactive TTY. An automated agent cannot fake the approval, and any later edit (`spin invalidate`) voids it.
@@ -41,7 +41,7 @@ spin  ─── deterministic spine ───  never calls a model
 
 Routing *predicts*, gates *block* — and a third deterministic layer **measures** whether either was right, closing the loop back into the harness. All of it is pure, offline reads over `.spindle/`; the model-free guard forbids tokenizers and pricing in `src/` so measurement can never grow model-awareness.
 
-- **`spin trace`** — the run-ledger: an append-only `events[]` timeline (`complete`/`gate`/`retry`) with a tier histogram and summed reported tokens. A pure read, exit 0.
+- **`spin trace`** — the run-ledger: an append-only `events[]` timeline (`complete`/`gate`/`retry`/`approve`) with a tier histogram and summed reported tokens. A pure read, exit 0.
 - **`spin eval`** — replays a corpus of recorded fixtures through the **real** gate functions; a gate that stops blocking what it used to block is a regression CI catches, with no model and no network. `--strict` is fail-closed on incomplete coverage — and the bundled corpus now covers **all 11 registry gates** with a pass *and* a block fixture, so `npm run eval` runs `--strict` green in CI (a new gate without fixtures fails the build).
 - **`spin budget`** — reconciles model-reported token spend per tier against an optional ceiling. **Accounting, not enforcement:** advisory, always exit 0 — a genuinely expensive task should cost a lot, and the spine cannot independently verify a self-reported count.
 
@@ -97,13 +97,13 @@ Copy `dist/` into your project and invoke `node dist/cli/index.js` directly. Pin
 | Command | What it does | Exit codes |
 |---|---|---|
 | `spin init --schema <sdd\|kb> --feature <slug>` | Scaffold `.spindle/`, copy editable schema to `.spindle/schema.yaml`, create `run.json` | 0 / 2 |
-| `spin next` | `{ ready:[{id,model,parallel_group}], blocked:{}, gate_blocked:{}, detected_on_disk:[], complete:bool }` — readiness is **ledger-authoritative + gate-aware**: an artifact is `gate_blocked` until the lifecycle gate before it is green; a stray `.md` only shows in `detected_on_disk`, never `ready` | 0 |
+| `spin next` | `{ feature, ready:[{id,model,parallel_group}], blocked:{}, gate_blocked:{}, detected_on_disk:[], complete:bool }` — readiness is **ledger-authoritative + gate-aware**: an artifact is `gate_blocked` until the lifecycle gate before it is green; a stray `.md` only shows in `detected_on_disk`, never `ready` | 0 |
 | `spin order` | Full Kahn build order for the active schema | 0 |
 | `spin state` (alias `spin status`) | Print the `run.json` ledger (`completed[]`, `retries{}`, `gates{}`) | 0 |
 | `spin explain <gateId>` | What a gate reads, what blocks it, which flags apply — no source-diving | 0 / 2 |
-| `spin complete <id> [--handoff f.json]` | Validate the worker handoff against the artifact's schema, then mark complete. **exit 1 if invalid** | 0 / 1 |
+| `spin complete <id> [--handoff f.json]` | Validate the worker handoff against the artifact's schema, then mark complete. **exit 1** if the handoff is invalid OR a lifecycle gate required before `<id>` (schema `gates:` map) hasn't passed | 0 / 1 |
 | `spin validate <id\|path>` | Structural checks (MD sections / manifest table / criteria IDs) | 0 / 1 |
-| `spin gate <gateId> [--agents d] [--routing f] [--kb d] [--findings f]` | Run a named gate. exit 0 = pass, exit 1 = BLOCK with `{gate,passed,reasons,unmet}` | 0 / 1 |
+| `spin gate <gateId> [--agents d] [--routing f] [--kb d] [--findings f]` | Run a named gate. exit 0 = pass, exit 1 = BLOCK with `{gate,passed,reasons,unmet}`. An **unknown** gate id is a usage error (exit 2) and writes nothing to the ledger | 0 / 1 / 2 |
 | `spin diff-criteria --define f --build f` | Set-diff DEFINE criteria vs BUILD passed → `unmet[]` | 0 / 1 |
 | `spin handoff-check <schemaId> <file.json>` | Standalone handoff validation | 0 / 1 |
 | `spin retry <id> --inc \| --ok` | Retry counter vs `config.build_retry_cap`. `--ok` exits 1 at ceiling | 0 / 1 |
@@ -134,17 +134,19 @@ Gates are run via `spin gate <id>`. A command that receives exit 1 surfaces `{ga
 | Gate ID | Fires before | Checks |
 |---|---|---|
 | `G_DEFINE` | `/design` | DEFINE sections present (`Why`/`What`/`Acceptance Criteria`), define handoff valid, optional clarity floor met |
-| `G_DESIGN` | `/build` | Manifest table present, design handoff valid |
-| `G_BUILD` | `/ship` | Every manifest file exists on disk; every DEFINE criterion `passed`; **no phantom criterion** (a `passed` AC-n DEFINE never declared → set-drift); a cited `verified_by` file must exist; **a passed criterion whose CI verifier reported `failed` blocks** (the spine reads the CI result, never runs the verifier); when `config.require_verified_by`, every passed criterion must cite a verifier; BUILD_REPORT present |
+| `G_DESIGN` | `/build` | DESIGN sections present (`Overview`/`File Manifest`/`Decisions`), a file-manifest table present, design handoff valid |
+| `G_BUILD` | `/ship` | Every manifest file exists on disk; every DEFINE criterion `passed`; **no phantom criterion** (a `passed` AC-n DEFINE never declared → set-drift); a cited `verified_by` file must exist; **a passed criterion whose CI verifier reported `failed` blocks** (the spine reads the CI result, never runs the verifier); when `config.require_verified_by`, every passed criterion must cite a verifier; manifest/`verified_by` paths must stay inside the project root (no `..` escape); when a CI `coverage` summary is reported, its `pct` must meet its `threshold`; BUILD_REPORT present |
 | `G_SHIP` | publish | DEFINE criteria minus build.passed must be empty; no phantom criterion; surfaces `spec-drift`; **a human approval must be recorded via `spin approve`** — the seam applied to sign-off: a model cannot approve |
 | `G_KB_STRUCTURE` | KB publish | KB structure checks |
 | `G_KB_COVERAGE` | KB publish | KB coverage checks |
 | `G_ROUTER_COVERAGE` | router validate | Agent→routing bijection, no silent skips |
-| `G_REVIEW_BLOCK` | `/review` · `/migrate` ship | Surviving CRITICAL findings > 0 → block |
+| `G_REVIEW_BLOCK` | `/review` · `/codex-review` · `/migrate` ship | Surviving CRITICAL findings > 0 → block |
 | `G_AUDIT` | `/audit` (brownfield) | Empty audit, or a `built[]` item without evidence, or a gap without a priority |
 | `G_OPS_CONFIG` | brownfield sign-off | Any `opsReadiness[]` item `enforced: false` (coded but inert-in-prod flag) |
 | `G_PLAN` | before `/build` of a plan | Vague-acceptance task, L/XL task bundling >1 domain, or an unaddressed blocking gap |
 | `G_HANDOFF` | (enforced inside `spin complete --handoff`) | Handoff JSON matches declared schema |
+
+The **11** gates above the line are dispatchable via `spin gate <id>` (the gate registry — what `spin eval --strict` covers). `G_HANDOFF` is not a registry gate: it's enforced inline by `spin complete --handoff`, listed here for completeness.
 
 ---
 
@@ -184,10 +186,10 @@ Creates `.spindle/`, `.spindle/run.json`, `.spindle/schema.yaml` (your editable 
 
 ### 2. Brainstorm
 
-Run `/brainstorm`. The command calls `spin next` to get the ready artifact, dispatches a SONNET worker via Task, the worker writes `BRAINSTORM.md` + a `define` handoff sidecar, then:
+Run `/brainstorm`. The command calls `spin next` to get the ready artifact, dispatches an **Opus** worker via Task (the `define-intent` task-kind never downgrades), the worker writes `BRAINSTORM.md` (brainstorm is a no-handoff artifact), then:
 
 ```bash
-spin complete BRAINSTORM --handoff .spindle/features/payments-reconciliation/.handoffs/brainstorm.json
+spin complete brainstorm
 ```
 
 ### 3. Define
@@ -388,7 +390,7 @@ After editing, run `spin schema validate` before running any workflow command. T
 
 ## Test and CI story
 
-The harness ships with **281 unit, integration, and end-to-end tests** (run `npm test`) covering:
+The harness ships with **303 unit, integration, and end-to-end tests** across 32 files (run `npm test`) covering:
 
 - Kahn ordering correctness under all dependency topologies (incl. `getDownstream` closure)
 - Gate pass/block logic for every gate ID — phantom-criterion, evidence, CI-verifier-failed, `require_verified_by`, and the `G_SHIP` human-approval requirement
