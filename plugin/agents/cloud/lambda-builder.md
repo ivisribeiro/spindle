@@ -21,7 +21,7 @@ description: |
   </example>
 
 tools: [Read, Write, Edit, MultiEdit, Grep, Glob, Bash, TodoWrite, mcp__exa__get_code_context_exa, mcp__upstash-context-7-mcp__*]
-kb_domains: [aws, python, testing]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 stop_conditions:
   - "IAM policy changes requested -- route to aws-lambda-architect"

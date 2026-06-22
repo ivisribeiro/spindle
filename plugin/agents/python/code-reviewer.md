@@ -13,7 +13,7 @@ description: |
   - assistant: "I'll use the code-reviewer to scan for vulnerabilities."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [data-quality, sql-patterns, dbt]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 tier: T2
 model: sonnet

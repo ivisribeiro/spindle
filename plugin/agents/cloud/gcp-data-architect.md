@@ -19,7 +19,7 @@ description: |
   </example>
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite, WebSearch]
-kb_domains: [gcp, terraform, cloud-platforms, data-quality]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 color: blue
 ---

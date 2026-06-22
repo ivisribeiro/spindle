@@ -1,298 +1,119 @@
 # Spindle Knowledge Base
 
-> The structured knowledge layer that grounds every agent response in verified, domain-specific content.
-
-```
-24 domains | 289 files | 42,500+ lines | MCP-validated 2026-03-26
-```
+> Structured knowledge domains that workers can consult during task execution.
+> Creation and updates are gated. Runtime consultation is model-trusted — read the
+> honesty section before assuming otherwise.
 
 ---
 
-## How KB Works — KB-First Architecture
+## What the KB system is
 
-Every Spindle worker follows **KB-First Resolution**: local knowledge is always checked before external sources. This is mandatory, not optional.
+The KB stores domain concepts as flat markdown files under `plugin/kb/<domain>/`.
+Each domain has:
 
-### Resolution Order
+- `index.md` — overview and navigation hub
+- `quick-reference.md` — fast lookup tables
+- `concept-<slug>.md` — one concept per file (the gate-enforced unit)
+- `manifest.json` — declares the concept slugs the domain covers
 
-```text
-1. KB CHECK        Agent reads index.md of the relevant domain (headings only)
-2. ON-DEMAND LOAD  Agent reads specific concept or pattern file matching the task
-3. MCP FALLBACK    Only if KB content is insufficient (max 3 MCP calls)
-4. CONFIDENCE      Calculated from the Agreement Matrix below
+The KB generator (`/create-kb`) and updater (`/update-kb`) are harness-native:
+they drive the `spin` ledger through a three-wave graph (Wave A manifest → Wave B
+parallel concept fan-out → Wave C assembly), gated by `G_KB_STRUCTURE` and
+`G_KB_COVERAGE`. Those gates are pure deterministic functions in
+`src/core/gates/kb-gates.ts`; they read the filesystem and the run-state, never
+conversation memory.
+
+---
+
+## KB-First: a declared, existence-checked binding (not a usage proof)
+
+Agents that use KB domains declare them in their frontmatter:
+
+```yaml
+kb_domains:
+  - spindle-harness
 ```
 
-### Agreement Matrix
+`kb_domains` is parsed by `AgentFrontmatter` in
+`src/core/validation/frontmatter.ts` (optional, additive). `G_ROUTER_COVERAGE`
+then checks **referential integrity**: every declared `kb_domain` must resolve to
+a real `plugin/kb/<domain>/` directory (pass `--kb <dir>` to point elsewhere) — a
+dangling or typo'd domain BLOCKS the gate. The check fires only when at least one
+agent declares a domain. What it does NOT — and structurally CANNOT — check is
+whether the model actually READ the domain at runtime.
 
-Confidence is determined by how KB content and MCP responses align:
+**What this means in practice:** declaring `kb_domains` is referential integrity
+(a named contract), not proof of consultation. The filing system exists; the
+read is model-trusted. Creation and update are deterministically gated; runtime
+consultation is not. Do not claim "code-enforced KB-First" — that would be a
+false assertion. The honest framing: the KB gives agents a stable, versioned
+material to cite, and the gates ensure that material is coherent.
 
-```text
-                  | MCP AGREES      | MCP DISAGREES   | MCP SILENT      |
-------------------+-----------------+-----------------+-----------------+
-KB HAS PATTERN    | HIGH (0.95)     | CONFLICT (0.50) | MEDIUM (0.75)   |
-KB SILENT         | MCP-ONLY (0.85) | N/A             | LOW (0.50)      |
+---
+
+## E-1 honesty rule
+
+Every concept worker is bound by rule E-1, enforced by the `KbConceptHandoff`
+schema (`kb-concept` handoff id, `src/core/handoff/schemas.ts`):
+
+- If a value map, enum, or encoding is present in source material, reproduce it
+  exactly.
+- If it is inferred, partially observed, or absent, do NOT write it as fact.
+  Instead write "Encoding opaque — see source" and set `needs_decoding: true`
+  in the handoff sidecar.
+- `G_KB_COVERAGE` surfaces any concept flagged `needs_decoding` so it is visible
+  to the steward, not buried.
+
+E-1 applies to every concept in every domain. It is the KB's core honesty
+contract.
+
+---
+
+## File layout
+
+```
+plugin/kb/
+  README.md                    this file
+  <domain>/
+    manifest.json              { "concepts": [{ "slug": "..." }] }
+    index.md                   required by G_KB_STRUCTURE
+    quick-reference.md         required by G_KB_STRUCTURE
+    concept-<slug>.md          one per slug in manifest (G_KB_COVERAGE checks each)
 ```
 
-When confidence falls below an agent's threshold (typically 0.90-0.95), the agent must ask the user for clarification rather than guessing.
+The flat `concept-<slug>.md` layout (not a `concepts/` subdirectory) is what
+`G_KB_STRUCTURE` scans for (`f.startsWith('concept-') && f.endsWith('.md')`).
+Any domain that deviates from this layout will fail the gate.
 
 ---
 
-## Domain Structure
+## Creating or updating a KB domain
 
-Every KB domain follows this standard layout:
+Use the slash commands — do not hand-author without running the gates.
 
-```text
-{domain}/
-  index.md              Domain overview and navigation
-  quick-reference.md    Fast lookup tables (~100 lines)
-  concepts/             Core concepts (3-6 files, ~150 lines each)
-    concept-1.md
-    concept-2.md
-  patterns/             Implementation patterns (3-6 files, ~200 lines each)
-    pattern-1.md
-    pattern-2.md
+```
+/create-kb <domain>           scaffold + author a new domain through the spin kb graph
+/create-kb <domain> --audit   re-run G_KB_STRUCTURE + G_KB_COVERAGE without re-authoring
+/update-kb <domain>           refresh/extend an existing domain (re-author only changed slugs)
 ```
 
-Some domains extend this with additional directories:
-
-- `reference/` -- Reference material with no line limit (e.g., lakeflow)
-- Numbered sub-domains -- Organized topic areas (e.g., microsoft-fabric `01-logging-monitoring/`)
-- Sub-domain directories -- Nested specializations (e.g., aws `lambda/`, `deployment/`)
-
----
-
-## Domain Catalog
-
-### Core Data Engineering
-
-| Domain | Files | Description | Used By |
-|--------|------:|-------------|---------|
-| dbt | 12 | Fusion Engine, Mesh, Semantic Layer, models, macros, tests | dbt-specialist, code-reviewer, sql-optimizer, test-generator, data-quality-analyst, pipeline-architect |
-| spark | 11 | PySpark, Spark SQL, DataFrames, Real-Time Mode, Spark Connect | spark-engineer, spark-specialist, spark-streaming-architect, spark-troubleshooter, spark-performance-analyzer, lakehouse-architect, lakeflow-architect |
-| airflow | 10 | Airflow 3.x TaskFlow, Dagster, Prefect comparison, DAG design | airflow-specialist, pipeline-architect |
-| sql-patterns | 9 | Cross-dialect SQL: window functions, CTEs, deduplication | code-reviewer, sql-optimizer, spark-engineer, spark-specialist, spark-troubleshooter, streaming-engineer, airflow-specialist, schema-designer |
-| streaming | 10 | Flink, Kafka, Spark Streaming, RisingWave, Materialize, CDC | streaming-engineer, spark-streaming-architect, ai-data-engineer |
-| data-modeling | 10 | Dimensional modeling, Data Vault, SCD types, schema evolution | schema-designer, data-platform-engineer, medallion-architect, supabase-specialist, data-contracts-engineer, data-quality-analyst, sql-optimizer |
-| data-quality | 10 | Soda, Great Expectations, dbt tests, ODCS, Monte Carlo | code-reviewer, data-quality-analyst, data-contracts-engineer, test-generator, ai-data-engineer, ai-data-engineer-cloud, ai-data-engineer-gcp, gcp-data-architect, aws-data-architect, medallion-architect, lakeflow-expert, lakeflow-pipeline-builder, lakeflow-specialist, pipeline-architect |
-
-### Infrastructure and Platforms
-
-| Domain | Files | Description | Used By |
-|--------|------:|-------------|---------|
-| lakehouse | 10 | Iceberg v3, Delta Lake 4.1, DuckLake, Unity, Gravitino | lakehouse-architect, data-platform-engineer, lakeflow-architect, lakeflow-expert, lakeflow-pipeline-builder, lakeflow-specialist, spark-streaming-architect, spark-performance-analyzer |
-| medallion | 10 | Bronze/Silver/Gold layer design, quality progression | medallion-architect, lakeflow-architect, lakeflow-expert, lakeflow-pipeline-builder |
-| cloud-platforms | 10 | Snowflake Cortex, Databricks LakeFlow, BigQuery AI | data-platform-engineer, ai-data-engineer-cloud, ai-data-engineer-gcp, gcp-data-architect, spark-specialist, spark-performance-analyzer |
-| aws | 20 | Lambda, S3, Glue, SAM deployment, IAM, Layers | aws-deployer, aws-lambda-architect, aws-data-architect, lambda-builder, ci-cd-specialist, ai-data-engineer-cloud |
-| gcp | 13 | Cloud Run, Pub/Sub, GCS, BigQuery, IAM, Secret Manager | ai-data-engineer-gcp, ai-prompt-specialist-gcp, gcp-data-architect, ai-data-engineer-cloud |
-| microsoft-fabric | 53 | Lakehouse, Warehouse, Pipelines, KQL, CI/CD, AI, Security | fabric-architect, fabric-pipeline-developer, fabric-logging-specialist, fabric-cicd-specialist, fabric-security-specialist, fabric-ai-specialist |
-| lakeflow | 23 | DLT pipelines, materialized views, streaming tables, DABs | lakeflow-architect, lakeflow-expert, lakeflow-pipeline-builder, lakeflow-specialist, ci-cd-specialist |
-| terraform | 14 | Resources, modules, providers, state, GCP/AWS patterns | aws-deployer, aws-lambda-architect, aws-data-architect, ai-data-engineer-cloud, ai-data-engineer-gcp, gcp-data-architect, ci-cd-specialist |
-| supabase | 9 | pgvector, RLS, Edge Functions, Auth, Realtime, migrations | supabase-specialist |
-
-### AI and Modern
-
-| Domain | Files | Description | Used By |
-|--------|------:|-------------|---------|
-| genai | 11 | Multi-agent systems, RAG, state machines, tool calling, guardrails | genai-architect, ai-prompt-specialist, llm-specialist, ai-prompt-specialist-gcp, qdrant-specialist |
-| prompt-engineering | 11 | Chain-of-thought, structured extraction, few-shot, system prompts | ai-prompt-specialist, llm-specialist, ai-prompt-specialist-gcp, genai-architect |
-| ai-data-engineering | 12 | RAG pipelines, vector DBs, feature stores, LLMOps, embeddings | ai-data-engineer, supabase-specialist, qdrant-specialist, genai-architect |
-| modern-stack | 10 | DuckDB, Polars, SQLMesh, Malloy, local-first analytics | (general use) |
-
-### Development Foundations
-
-| Domain | Files | Description | Used By |
-|--------|------:|-------------|---------|
-| python | 10 | Dataclasses, type hints, generators, context managers | python-developer, code-cleaner, code-documenter |
-| pydantic | 10 | BaseModel, validators, LLM output validation, extraction schemas | python-developer, ai-prompt-specialist, llm-specialist, ai-prompt-specialist-gcp |
-| testing | 10 | pytest, fixtures, mocking, parametrize, Spark testing | python-developer, test-generator |
-| shared | 1 | Cross-domain anti-patterns referenced by every agent via `anti_pattern_refs` | (all agents) |
+The `kb` schema graph has exactly four artifact ids: `manifest`, `concepts`,
+`quick-reference`, `index`. Workers are dispatched via the Task tool at the tier
+from `spin route kb-concept` (sonnet, downgradable to haiku under `--budget low`
+when the gate backstops). Never pass `--handoff` to `spin complete` for these
+ids — the kb graph declares no `handoff:` field on them; per-slug `kb-concept`
+sidecars are enforced at gate time by `G_KB_COVERAGE`, not at completion time.
 
 ---
 
-## How KB Integrates with Agents
+## Domains
 
-Each agent declares a `kb_domains` field in its frontmatter that determines which domains it reads during KB-First Resolution.
+Domains in this directory are authored through `/create-kb` and satisfy
+`G_KB_STRUCTURE` + `G_KB_COVERAGE`. The directory listing IS the registry — do not
+hand-type file counts or dates in this README (they go stale and the guard will
+not catch prose drift). Every `kb_domain` declared on an agent must match a
+directory here, or `G_ROUTER_COVERAGE` blocks.
 
-### Agent-to-KB Mapping (by agent group)
-
-**Architect agents** (8 agents in `${CLAUDE_PLUGIN_ROOT}/agents/architect/`):
-
-| Agent | KB Domains |
-|-------|------------|
-| data-platform-engineer | cloud-platforms, lakehouse, data-modeling |
-| genai-architect | genai, prompt-engineering, ai-data-engineering |
-| kb-architect | (none -- operates on KB structure itself) |
-| lakehouse-architect | lakehouse, spark, data-modeling |
-| medallion-architect | medallion, data-modeling, lakehouse, data-quality |
-| pipeline-architect | airflow, data-quality, dbt |
-| schema-designer | data-modeling, sql-patterns, data-quality |
-| the-planner | (none -- strategic planning) |
-
-**Cloud agents** (10 agents in `${CLAUDE_PLUGIN_ROOT}/agents/cloud/`):
-
-| Agent | KB Domains |
-|-------|------------|
-| ai-data-engineer-cloud | gcp, aws, terraform, data-quality, cloud-platforms |
-| ai-data-engineer-gcp | gcp, terraform, cloud-platforms, data-quality |
-| ai-prompt-specialist-gcp | prompt-engineering, genai, pydantic, gcp |
-| aws-data-architect | aws, terraform, data-quality |
-| aws-deployer | aws, terraform |
-| aws-lambda-architect | aws, terraform |
-| ci-cd-specialist | terraform, aws, lakeflow |
-| gcp-data-architect | gcp, terraform, cloud-platforms, data-quality |
-| lambda-builder | aws, python, testing |
-| supabase-specialist | ai-data-engineering, data-modeling |
-
-**Platform agents** (6 agents in `${CLAUDE_PLUGIN_ROOT}/agents/platform/`):
-
-| Agent | KB Domains |
-|-------|------------|
-| fabric-ai-specialist | microsoft-fabric |
-| fabric-architect | microsoft-fabric |
-| fabric-cicd-specialist | microsoft-fabric |
-| fabric-logging-specialist | microsoft-fabric |
-| fabric-pipeline-developer | microsoft-fabric |
-| fabric-security-specialist | microsoft-fabric |
-
-**Data engineering agents** (15 agents in `${CLAUDE_PLUGIN_ROOT}/agents/data-engineering/`):
-
-| Agent | KB Domains |
-|-------|------------|
-| ai-data-engineer | ai-data-engineering, data-quality, streaming |
-| airflow-specialist | airflow, sql-patterns, data-quality |
-| dbt-specialist | dbt, data-quality, sql-patterns |
-| lakeflow-architect | lakeflow, lakehouse, spark, medallion |
-| lakeflow-expert | lakeflow, lakehouse, data-quality, medallion |
-| lakeflow-pipeline-builder | lakeflow, lakehouse, data-quality, medallion |
-| lakeflow-specialist | lakeflow, lakehouse, spark, data-quality |
-| qdrant-specialist | ai-data-engineering, genai |
-| spark-engineer | spark, sql-patterns, streaming |
-| spark-performance-analyzer | spark, cloud-platforms, lakehouse |
-| spark-specialist | spark, sql-patterns, cloud-platforms |
-| spark-streaming-architect | spark, streaming, lakehouse |
-| spark-troubleshooter | spark, sql-patterns |
-| sql-optimizer | sql-patterns, data-modeling, dbt |
-| streaming-engineer | streaming, spark, sql-patterns |
-
-**Python agents** (6 agents in `${CLAUDE_PLUGIN_ROOT}/agents/python/`):
-
-| Agent | KB Domains |
-|-------|------------|
-| ai-prompt-specialist | prompt-engineering, pydantic, genai |
-| code-cleaner | python |
-| code-documenter | python |
-| code-reviewer | data-quality, sql-patterns, dbt |
-| llm-specialist | prompt-engineering, pydantic, genai |
-| python-developer | python, pydantic, testing |
-
-**Test agents** (3 agents in `${CLAUDE_PLUGIN_ROOT}/agents/test/`):
-
-| Agent | KB Domains |
-|-------|------------|
-| data-contracts-engineer | data-quality, data-modeling |
-| data-quality-analyst | data-quality, dbt, data-modeling |
-| test-generator | data-quality, dbt, testing |
-
-**Dev and Workflow agents** (10 agents) do not use KB domains directly.
-
----
-
-## How KB Integrates with SDD Workflow
-
-The SDD workflow references KB domains at every phase:
-
-```text
-DEFINE                     DESIGN                     BUILD
-------                     ------                     -----
-
-KB domains specified   ->  Agents pull patterns   ->  Agents consult KB
-in requirements            from matched domains       during implementation
-
-Example:                   Example:                   Example:
-kb_domains:                spark-engineer reads        Reads patterns/
-  - spark                  spark/index.md              delta-integration.md
-  - lakehouse              for relevant concepts       for working code
-```
-
----
-
-## File Size Limits
-
-Defined in `_index.yaml` and enforced across all domains:
-
-| File Type | Max Lines | Purpose |
-|-----------|----------:|---------|
-| quick-reference | ~100 | Fast lookup tables, cheat sheets |
-| concept | ~150 | Core concept explanation with examples |
-| pattern | ~200 | Implementation pattern with production code |
-| spec | no limit | Machine-readable specifications |
-| reference | no limit | Detailed reference documentation |
-
----
-
-## Creating a KB Domain
-
-### Option 1: Use the slash command
-
-```bash
-/create-kb {domain-name}
-```
-
-This scaffolds the full domain structure, copies templates, and registers the domain in `_index.yaml`.
-
-### Option 2: Manual creation
-
-1. Create the directory structure:
-
-```bash
-mkdir -p ${CLAUDE_PLUGIN_ROOT}/kb/{domain}/{concepts,patterns}
-```
-
-2. Copy templates from `_templates/`:
-
-```bash
-cp ${CLAUDE_PLUGIN_ROOT}/kb/_templates/index.md.template ${CLAUDE_PLUGIN_ROOT}/kb/{domain}/index.md
-cp ${CLAUDE_PLUGIN_ROOT}/kb/_templates/quick-reference.md.template ${CLAUDE_PLUGIN_ROOT}/kb/{domain}/quick-reference.md
-cp ${CLAUDE_PLUGIN_ROOT}/kb/_templates/concept.md.template ${CLAUDE_PLUGIN_ROOT}/kb/{domain}/concepts/{name}.md
-cp ${CLAUDE_PLUGIN_ROOT}/kb/_templates/pattern.md.template ${CLAUDE_PLUGIN_ROOT}/kb/{domain}/patterns/{name}.md
-```
-
-3. Fill in domain-specific content with working code examples.
-
-4. Register the domain in `_index.yaml` under the `domains:` key.
-
-5. Add the domain to relevant agents' `kb_domains` frontmatter.
-
----
-
-## Best Practices
-
-1. **Be specific** -- Reference actual code from real projects, not hypothetical examples
-2. **Include examples** -- Working code snippets that can be copied and adapted
-3. **Keep updated** -- Mark freshness dates; validate with MCP tools when updating
-4. **Cite sources** -- Link to official documentation for version-sensitive content
-5. **Stay within limits** -- Respect the line limits defined in `_index.yaml`
-6. **One concept per file** -- Each file should cover exactly one idea
-7. **Cross-reference** -- Link to related concepts and patterns in other domains
-8. **Test examples** -- Every code block should be syntactically valid
-
----
-
-## Registry Reference
-
-The machine-readable registry lives at `${CLAUDE_PLUGIN_ROOT}/kb/_index.yaml`. It defines:
-
-- **version** -- Schema version of the index format
-- **limits** -- File size limits (single source of truth)
-- **templates** -- Paths to scaffolding templates
-- **shared** -- Cross-domain resources (anti-patterns library)
-- **domains** -- Complete registry of all 24 domains with:
-  - `name` -- Domain identifier
-  - `description` -- One-line summary
-  - `path` -- Directory path relative to `${CLAUDE_PLUGIN_ROOT}/kb/`
-  - `mcp_validated` -- Date of last MCP validation
-  - `entry_points` -- Primary files for agent resolution (`index`, `quick_reference`)
-  - `concepts` -- List of concept files with confidence scores
-  - `patterns` -- List of pattern files with confidence scores
-  - `reference` -- (optional) List of reference files with no line limit
-
-Agents resolve KB content by reading `_index.yaml` to discover available domains and their entry points, then loading specific files on demand based on the task at hand.
+The seed domain `spindle-harness` covers the hard seam, gate catalog, handoff
+ABI, exit-code ABI, model routing, and the run-ledger. It is the domain workers
+should consult when writing commands, agents, or gates for this project.

@@ -12,7 +12,7 @@ description: |
   - assistant: "I'll analyze the job profile and recommend optimizations."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [spark, cloud-platforms, lakehouse]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 color: red
 ---

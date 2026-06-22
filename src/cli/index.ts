@@ -112,6 +112,7 @@ export async function runCli(
     .command('gate <gateId>')
     .option('--agents <dir>', 'agents dir (G_ROUTER_COVERAGE)')
     .option('--routing <file>', 'routing.json (G_ROUTER_COVERAGE)')
+    .option('--kb <dir>', 'kb dir for kb_domains referential check (G_ROUTER_COVERAGE; default plugin/kb)')
     .option('--findings <file>', 'findings.json (G_REVIEW_BLOCK)')
     .option('--handoff <file>', 'audit.json sidecar (G_AUDIT)')
     .option('--audit <file>', 'audit.json sidecar (G_OPS_CONFIG, G_PLAN)')
@@ -119,6 +120,7 @@ export async function runCli(
       const args: Record<string, string> = {};
       if (opts.agents) args.agents = opts.agents;
       if (opts.routing) args.routing = opts.routing;
+      if (opts.kb) args.kb = opts.kb;
       if (opts.findings) args.findings = opts.findings;
       if (opts.handoff) args.handoff = opts.handoff;
       if (opts.audit) args.audit = opts.audit;

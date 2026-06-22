@@ -18,7 +18,7 @@ description: |
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
 tier: T2
-kb_domains: [data-modeling, sql-patterns, data-quality]
+kb_domains: []
 color: purple
 model: sonnet
 stop_conditions:

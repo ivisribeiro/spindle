@@ -19,7 +19,7 @@ description: |
   </example>
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite, WebSearch]
-kb_domains: [aws, terraform, data-quality]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 color: yellow
 ---

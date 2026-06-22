@@ -13,7 +13,7 @@ description: |
   - assistant: "I'll generate API documentation from the codebase."
 
 tools: [Read, Write, Edit, Glob, Grep, Bash, TodoWrite]
-kb_domains: [python]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 tier: T2
 model: sonnet

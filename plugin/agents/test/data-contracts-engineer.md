@@ -13,7 +13,7 @@ description: |
     assistant: "Let me invoke the data-contracts-engineer for governance rules."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [data-quality, data-modeling]
+kb_domains: []
 color: green
 tier: T2
 model: sonnet

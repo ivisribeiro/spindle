@@ -16,7 +16,7 @@ description: |
   - assistant: "Let me invoke the sql-optimizer for dialect translation."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [sql-patterns, data-modeling, dbt]
+kb_domains: []
 color: orange
 model: sonnet
 stop_conditions:

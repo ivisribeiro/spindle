@@ -64,3 +64,43 @@ describe('G_ROUTER_COVERAGE (bijection)', () => {
     expect(r.reasons.some((x) => x.includes('invalid agent frontmatter'))).toBe(true);
   });
 });
+
+function agentWithKb(name: string, domains: string[]): string {
+  const list = domains.map((d) => `  - ${d}`).join('\n');
+  return `---\nname: ${name}\ndescription: ${name} agent\nkb_domains:\n${list}\n---\n# ${name}\n`;
+}
+
+describe('G_ROUTER_COVERAGE (kb_domains referential integrity)', () => {
+  it('passes when a declared kb_domain resolves to a real dir', () => {
+    fs.mkdirSync(path.join(root, 'kb', 'dbt'), { recursive: true });
+    fs.writeFileSync(path.join(agentsDir, 'alpha.md'), agentWithKb('alpha', ['dbt']));
+    const ctx = ctxFor({ agents: ['alpha', 'beta'] });
+    ctx.args.kb = path.join(root, 'kb');
+    expect(gRouterCoverage(ctx).passed).toBe(true);
+  });
+
+  it('blocks on a dangling kb_domain (referential integrity, not usage proof)', () => {
+    fs.mkdirSync(path.join(root, 'kb'), { recursive: true });
+    fs.writeFileSync(path.join(agentsDir, 'alpha.md'), agentWithKb('alpha', ['ghost']));
+    const ctx = ctxFor({ agents: ['alpha', 'beta'] });
+    ctx.args.kb = path.join(root, 'kb');
+    const r = gRouterCoverage(ctx);
+    expect(r.passed).toBe(false);
+    expect(r.unmet).toContain('dangling-kb-domain:alpha:ghost');
+    expect(r.reasons.some((x) => x.includes('referential integrity'))).toBe(true);
+  });
+
+  it('blocks with kb-dir-missing when a domain is declared but the kb dir is absent', () => {
+    fs.writeFileSync(path.join(agentsDir, 'alpha.md'), agentWithKb('alpha', ['dbt']));
+    const ctx = ctxFor({ agents: ['alpha', 'beta'] });
+    ctx.args.kb = path.join(root, 'does-not-exist');
+    const r = gRouterCoverage(ctx);
+    expect(r.passed).toBe(false);
+    expect(r.unmet).toContain('kb-dir-missing');
+  });
+
+  it('skips the kb check entirely when no agent declares kb_domains (kb dir absent)', () => {
+    // alpha + beta (from beforeEach) declare no kb_domains; default --kb is absent
+    expect(gRouterCoverage(ctxFor({ agents: ['alpha', 'beta'] })).passed).toBe(true);
+  });
+});

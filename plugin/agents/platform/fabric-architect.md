@@ -2,7 +2,7 @@
 name: fabric-architect
 tier: T3
 model: opus
-kb_domains: [microsoft-fabric]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 description: |
   Strategic Fabric solution architect for end-to-end architectures using KB + MCP validation.

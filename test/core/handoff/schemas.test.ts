@@ -148,4 +148,14 @@ describe('handoff contracts', () => {
     const r = checkHandoffObject('audit', { built: [], gaps: [] });
     expect(r.ok).toBe(false);
   });
+
+  it('kb-concept accepts decoding_note (E-1) and stays valid without it', () => {
+    expect(checkHandoffObject('kb-concept', { concept: 'c', summary: 's' }).ok).toBe(true);
+    expect(
+      checkHandoffObject('kb-concept', { concept: 'c', summary: 's', decoding_note: 'opaque code 7' }).ok
+    ).toBe(true);
+    expect(
+      checkHandoffObject('kb-concept', { concept: 'c', summary: 's', decoding_note: 123 }).ok
+    ).toBe(false);
+  });
 });

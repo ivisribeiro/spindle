@@ -129,6 +129,11 @@ export const KbConceptHandoff = z.object({
   summary: z.string().min(1),
   test_cases: z.array(z.string()).default([]),
   needs_decoding: z.boolean().default(false),
+  // E-1 honesty: when a worker flags an opaque encoding it must say WHAT is
+  // undecoded, not just raise the flag. Optional at the schema layer (additive);
+  // gKbCoverage enforces note-required-iff-needs_decoding so the block names the
+  // offending concept.
+  decoding_note: z.string().optional(),
 });
 
 // AuditHandoff — the typed worker-output for the brownfield `audit` artifact.

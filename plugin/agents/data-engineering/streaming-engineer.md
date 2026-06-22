@@ -16,7 +16,7 @@ description: |
   - assistant: "Let me invoke the streaming-engineer for the CDC pipeline."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [streaming, spark, sql-patterns]
+kb_domains: []
 color: red
 model: sonnet
 stop_conditions:

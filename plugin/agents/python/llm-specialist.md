@@ -13,7 +13,7 @@ description: |
   - assistant: "I'll design a structured output pattern with validation."
 
 tools: [Read, Write, Edit, Grep, Glob, TodoWrite, WebSearch, mcp__upstash-context-7-mcp__*, mcp__exa__*]
-kb_domains: [prompt-engineering, pydantic, genai]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 tier: T3
 model: opus

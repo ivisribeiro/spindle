@@ -2,7 +2,7 @@
 name: fabric-logging-specialist
 tier: T3
 model: sonnet
-kb_domains: [microsoft-fabric]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 description: |
   Expert in Microsoft Fabric logging, monitoring, KQL queries, and observability.

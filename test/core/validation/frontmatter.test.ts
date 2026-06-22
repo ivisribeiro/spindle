@@ -42,4 +42,22 @@ describe('parseAgentFrontmatter', () => {
   it('fails closed when the frontmatter has no name', () => {
     expect(parseAgentFrontmatter('---\ndescription: nameless\n---\n').ok).toBe(false);
   });
+
+  it('parses kb_domains as a string array when present', () => {
+    const r = parseAgentFrontmatter('---\nname: a\ndescription: d\nkb_domains:\n  - spindle-harness\n  - dbt\n---\n# x');
+    expect(r.ok).toBe(true);
+    expect(r.data!.kb_domains).toEqual(['spindle-harness', 'dbt']);
+  });
+
+  it('leaves kb_domains undefined when the key is absent (additive/backward-compat)', () => {
+    const r = parseAgentFrontmatter('---\nname: a\ndescription: d\n---\n# x');
+    expect(r.ok).toBe(true);
+    expect(r.data!.kb_domains).toBeUndefined();
+  });
+
+  it('accepts an empty kb_domains: []', () => {
+    const r = parseAgentFrontmatter('---\nname: a\ndescription: d\nkb_domains: []\n---\n# x');
+    expect(r.ok).toBe(true);
+    expect(r.data!.kb_domains).toEqual([]);
+  });
 });

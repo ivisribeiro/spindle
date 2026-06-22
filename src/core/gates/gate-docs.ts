@@ -100,13 +100,19 @@ export const GATE_DOCS: Record<string, GateDoc> = {
   },
   G_ROUTER_COVERAGE: {
     gate: 'G_ROUTER_COVERAGE',
-    purpose: 'Bijection between the agent roster and the routing table — no silent skips.',
-    reads: ['the agents dir (--agents)', 'the routing.json (--routing)'],
+    purpose:
+      'Bijection between the agent roster and the routing table, plus kb_domains referential integrity — no silent skips.',
+    reads: [
+      'the agents dir (--agents)',
+      'the routing.json (--routing)',
+      'the kb dir (--kb, default plugin/kb) for declared kb_domains',
+    ],
     blocks_when: [
       'an agent frontmatter fails to parse',
       'an agent is missing from routing, or routing lists an agent that does not exist',
+      'an agent declares a kb_domain with no matching <kb>/<domain>/ dir (referential integrity, not usage proof)',
     ],
-    flags: ['--agents <dir> (required)', '--routing <file> (required)'],
+    flags: ['--agents <dir> (required)', '--routing <file> (required)', '--kb <dir> (optional; default plugin/kb)'],
   },
   G_REVIEW_BLOCK: {
     gate: 'G_REVIEW_BLOCK',

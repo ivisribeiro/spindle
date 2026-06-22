@@ -17,7 +17,7 @@ description: |
   - assistant: "I'll design the CDC implementation with APPLY CHANGES."
 
 tools: [Read, Write, Edit, Bash, Grep, Glob, TodoWrite, WebSearch, WebFetch, Task, mcp__exa__get_code_context_exa]
-kb_domains: [lakeflow, lakehouse, data-quality, medallion]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 stop_conditions:
   - "User asks about PySpark job optimization — escalate to spark-engineer"

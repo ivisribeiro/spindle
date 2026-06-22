@@ -16,7 +16,7 @@ description: |
   - assistant: "Let me invoke the dbt-specialist to generate tests."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [dbt, data-quality, sql-patterns]
+kb_domains: []
 color: orange
 model: sonnet
 stop_conditions:

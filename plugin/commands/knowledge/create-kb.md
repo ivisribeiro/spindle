@@ -8,7 +8,7 @@ description: Build a complete, governed knowledge base for a domain by driving t
 Author a full KB domain by driving the `spin` kb graph, not by blind delegation.
 `spin` owns ordering, validation, gates, and the ledger; this command runs the
 loop and fans workers out via Task. The CLI never calls a model — every
-ordering/validation/gate/state decision comes from an `spin` exit code.
+ordering/validation/gate/state decision comes from a `spin` exit code.
 
 Shorthand used below: `spin <args>` ≡ `node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js <args>`.
 Exit-code ABI: `0` pass · `1` gate blocked / handoff invalid · `2` usage · `3` internal.
@@ -34,6 +34,10 @@ This copies the editable kb schema into `.spindle/schema.yaml` and creates
 spin schema show
 ```
 
+The schema declares four artifact ids: `manifest`, `concepts`, `quick-reference`,
+`index`. None declares a `handoff:` field — keep this in mind; see the
+**Sidecar naming invariant** below.
+
 ## 1. Drive the kb graph with `spin next`
 
 Loop until the graph reports complete. On every iteration:
@@ -51,12 +55,9 @@ It returns `{ ready:[{id,model,parallel_group}], blocked:{}, complete:bool }`.
   `spin route <kind>`), then dispatch one worker via the Task tool on that tier.
 - Each worker writes its markdown artifact under `.spindle/features/<domain>/`.
   Concept workers also write a `kb-concept` JSON sidecar under
-  `.spindle/features/<domain>/.handoffs/` (enforced at gate time by G_KB_COVERAGE,
-  not at complete time — see Wave B).
-- Mark complete only through the CLI. The kb graph's four artifacts
-  (`manifest`, `concepts`, `quick-reference`, `index`) declare no `handoff:`
-  field, so `spin complete <id>` records completion without running G_HANDOFF —
-  do not pass `--handoff` for these ids:
+  `.spindle/features/<domain>/.handoffs/` — see **Sidecar naming invariant**.
+- The four artifact ids (`manifest`, `concepts`, `quick-reference`, `index`) declare
+  NO `handoff:` field. Mark each complete without `--handoff`:
 
 ```
 spin complete <id>
@@ -67,16 +68,16 @@ spin complete <id>
 
 ```
 spin retry <id> --inc      # before each re-dispatch
-spin retry <id> --ok       # exit 1 at ceiling -> stop and surface the failure
+spin retry <id> --ok       # exit 1 at ceiling → stop and surface the failure
 ```
 
 Then call `spin next` again. The graph hands you the waves in this order:
 
-### Wave A — manifest (single worker)
+### Wave A — manifest (single worker, sonnet)
 
 The first ready artifact is the concept manifest, graph id `manifest`. Dispatch
-one worker (its hint is `sonnet`; use the `model` from `spin next`) to enumerate
-the domain and write `manifest.json`:
+one worker (its hint is `sonnet`; confirm with `spin route kb-concept`) to
+enumerate the domain and write `manifest.json`:
 
 ```json
 { "concepts": [ { "slug": "..." }, { "slug": "..." } ] }
@@ -84,15 +85,16 @@ the domain and write `manifest.json`:
 
 The `manifest` artifact has no `handoff:` and no `validate:` spec, so
 `spin validate manifest` only confirms the file exists — it does NOT check the
-`{ concepts: [{ slug }] }` shape, and `spin complete manifest` does not run
-G_HANDOFF. The manifest's structure is enforced later, at gate time, by
-G_KB_STRUCTURE / G_KB_COVERAGE. Mark it complete:
+`{ concepts: [{ slug }] }` shape, and `spin complete manifest` does NOT run
+G_HANDOFF. The manifest's structure is enforced later by G_KB_STRUCTURE /
+G_KB_COVERAGE. Mark it complete:
 
 ```
 spin complete manifest
 ```
 
 The slugs in `manifest.json` are what the concept wave fans out over.
+Cap the concept set at 5–7 slugs per domain to keep token spend proportional.
 
 ### Wave B — concepts (PARALLEL fan-out, sonnet)
 
@@ -102,53 +104,64 @@ graph id — the graph models the whole concept wave as the single `concepts`
 artifact. Drive that one id.
 
 Fan the authoring out yourself: read the slugs from `manifest.json` and dispatch
-one worker per slug **in a single message** (true parallel). Concept authoring is
-the `kb-concept` task-kind → sonnet; confirm with `spin route kb-concept`.
+one `kb-concept-worker` per slug **in a single message** (true parallel). Confirm
+the tier:
 
-Each per-slug worker writes:
-
-- `concept-<slug>.md` — the concept page.
-- a `kb-concept` handoff sidecar `.handoffs/kb-concept-<slug>.json`:
-
-```json
-{
-  "concept": "<slug>",
-  "summary": "one-paragraph plain-language summary",
-  "test_cases": [ "..." ],
-  "needs_decoding": false
-}
+```
+spin route kb-concept
 ```
 
-Honesty rule (E-1): a worker NEVER invents a meaning. If a code/value is opaque,
-it sets `"needs_decoding": true` rather than fabricating a decode.
+Pass each worker:
+- `FEATURE` — the domain slug
+- `CONCEPT` — the specific slug it must author
+- `SCHEMA_PATH` — `.spindle/schema.yaml`
 
-The `concepts` artifact has no `handoff:` field, so `spin complete concepts` does
-NOT run G_HANDOFF on any sidecar. The per-slug `kb-concept` sidecars are written
-to `.handoffs/` and are validated later, at gate time, by G_KB_COVERAGE (which
-checks every manifest slug has a concept page with a valid `kb-concept` handoff)
-— not at complete time. Once every per-slug worker has written its page and
-sidecar, mark the single wave artifact complete:
+Each per-slug worker writes two files (and ONLY these two):
+
+1. `concept-<slug>.md` — the concept page.
+2. `.handoffs/kb-concept-<slug>.json` — the handoff sidecar (see invariant below).
+
+The worker does NOT call `spin complete`. That is the orchestrator's job.
+
+Once every per-slug worker has written its page and sidecar, mark the single
+wave artifact complete (no `--handoff` — the `concepts` artifact has none):
 
 ```
 spin complete concepts
 ```
 
-If a worker's output is incomplete, re-dispatch it and bound the wave with the
-`concepts` retry budget (there is no per-slug retry counter):
+If a worker's output is incomplete, re-dispatch it before calling `spin complete`:
 
 ```
 spin retry concepts --inc      # before each re-dispatch
-spin retry concepts --ok       # exit 1 at ceiling -> stop and surface the failure
+spin retry concepts --ok       # exit 1 at ceiling → stop and surface the failure
 ```
+
+#### Sidecar naming invariant
+
+`G_KB_COVERAGE` looks for sidecars named exactly `kb-concept-<slug>.json` in
+`.spindle/features/<domain>/.handoffs/`. Workers MUST write to that path.
+Do NOT use the artifact id (`concepts`) as the sidecar filename — that is
+the wrong path and the gate will report coverage failures for every slug.
+
+Correct: `.handoffs/kb-concept-incremental-strategy.json`
+Wrong: `.handoffs/concepts.json`
 
 ### Wave C — quick-reference + index (haiku)
 
 Once the `concepts` wave is complete, `spin next` releases the quick-reference and
 the index. These are mechanical assembly over the completed concept pages and
-their `kb-concept` sidecars → haiku (confirm with `spin route format-convert` /
-`spin route section-scan`). Neither artifact declares a `handoff:` field, so do
-not pass `--handoff`. Dispatch, then validate (structural section check) +
-complete each:
+their `kb-concept` sidecars. Confirm the tier:
+
+```
+spin route format-convert    # quick-reference
+spin route section-scan      # index
+```
+
+Both hint `haiku`. Dispatch one worker per artifact **in a single message**
+(they share no explicit `parallel_group` in the schema, but have no dependency
+on each other, so fan out together). Neither declares a `handoff:` field —
+do not pass `--handoff`. Validate + complete each:
 
 ```
 spin validate quick-reference
@@ -167,22 +180,37 @@ With the graph complete, run the two KB gates. Branch strictly on exit code.
 spin gate G_KB_STRUCTURE
 ```
 
-Verifies the KB's structural shape (manifest ↔ concept pages, required sections,
-quick-reference + index present).
+Verifies the KB's structural shape: `manifest.json`, `index.md`, `quick-reference.md`
+present, and at least one `concept-*.md` file.
 
 ```
 spin gate G_KB_COVERAGE
 ```
 
-Verifies every manifest slug is covered by a concept page with a valid
-`kb-concept` handoff (and surfaces any `needs_decoding` debt).
+Verifies every manifest slug is covered by a `concept-<slug>.md` page with a
+valid `kb-concept-<slug>.json` handoff sidecar containing at least the configured
+minimum number of test cases. Also surfaces any concept flagged `needs_decoding`.
 
-For each: exit `0` → pass. Exit `1` → STOP, surface the `{gate,passed,reasons,unmet}`
-payload, and do not declare the KB done. Fix the unmet items (re-dispatch the
+For each gate: exit `0` → pass. Exit `1` → STOP, surface the `{gate,passed,reasons,unmet}`
+payload, and do NOT declare the KB done. Fix the unmet items (re-dispatch the
 named concept/assembly workers via the loop above), then re-run the gate.
 
-When both gates pass, report the domain, the concept count, the artifacts under
-`.spindle/features/<domain>/`, and any concept flagged `needs_decoding`.
+## 3. Surface the run ledger
+
+After both gates pass, surface usage so the ledger is fed and visible:
+
+```
+spin trace
+spin budget --max-tokens 200000
+```
+
+`spin budget` is advisory (always exits `0`) — it flags over-budget but never
+blocks. For a 5–7 concept domain on sonnet, expect ~40–80k tokens total.
+
+Report the domain, concept count, artifacts under `.spindle/features/<domain>/`,
+and any concept flagged `needs_decoding` (those are decoding debt — not blocking,
+but must be surfaced so the user knows what the KB cannot resolve without more
+source material).
 
 ## Audit mode (`/create-kb --audit`)
 
@@ -202,10 +230,14 @@ on any artifact a gate flags to localize the defect.
 
 - Never mark an artifact complete by hand — always `spin complete <id>`.
 - The kb graph has exactly four artifact ids: `manifest`, `concepts`,
-  `quick-reference`, `index`. None declares a `handoff:` field, so never pass
-  `--handoff` to `spin complete`, and never invent per-slug `concept-<slug>` ids
-  for `complete`/`retry`/`validate` — drive the single `concepts` wave id.
-- `kb-concept` sidecars are enforced by G_KB_COVERAGE at gate time, not by `spin complete`.
+  `quick-reference`, `index`. None declares a `handoff:` field, so NEVER pass
+  `--handoff` to `spin complete` for any of these ids.
+- Per-slug sidecars are named `kb-concept-<slug>.json`, not `<artifact-id>.json`.
+  Workers write them; the orchestrator does NOT pass them to `spin complete`.
+  They are validated by G_KB_COVERAGE at gate time.
+- Workers write ONLY their concept page and sidecar. The orchestrator calls
+  `spin complete concepts` once all workers have finished.
 - Never advance past a gate that exits `1`.
 - Concept workers obey E-1: flag `needs_decoding`, never fabricate a meaning.
+- Cap concept sets at 5–7 per domain; `spin budget` advisory at 200k tokens.
 - Only the commands, flags, gates, and handoff ids above exist — do not invent others.

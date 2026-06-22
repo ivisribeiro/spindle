@@ -1,5 +1,7 @@
 ---
 name: build-worker
+kb_domains:
+  - spindle-harness
 description: |
   Phase 3 worker agent for a single manifest file/layer. Reads the manifest
   entry, writes the code artifact, runs verification, and emits a build-task

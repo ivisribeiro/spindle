@@ -1,0 +1,10 @@
+{
+  "concepts": [
+    { "slug": "hard-seam" },
+    { "slug": "gate-catalog" },
+    { "slug": "handoff-abi" },
+    { "slug": "exit-code-abi" },
+    { "slug": "model-routing" },
+    { "slug": "run-ledger" }
+  ]
+}

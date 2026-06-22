@@ -19,7 +19,7 @@ description: |
   </example>
 
 tools: [Read, Write, Edit, MultiEdit, Grep, Glob, Bash, TodoWrite, WebSearch, WebFetch, mcp__upstash-context-7-mcp__*, mcp__exa__*]
-kb_domains: [gcp, terraform, cloud-platforms, data-quality]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 stop_conditions:
   - "Task outside GCP data engineering scope -- escalate to appropriate specialist"

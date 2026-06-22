@@ -17,7 +17,7 @@ description: |
   - assistant: "I'll design the DLT configuration with expectations."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite, mcp__upstash-context-7-mcp__*, mcp__exa__get_code_context_exa]
-kb_domains: [lakeflow, lakehouse, spark, medallion]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 stop_conditions:
   - "User asks about PySpark job optimization — escalate to spark-engineer"

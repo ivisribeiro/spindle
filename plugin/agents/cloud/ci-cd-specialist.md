@@ -21,7 +21,7 @@ description: |
   </example>
 
 tools: [Read, Write, Edit, MultiEdit, Grep, Glob, Bash, TodoWrite, mcp__exa__get_code_context_exa, mcp__upstash-context-7-mcp__*]
-kb_domains: [terraform, aws, lakeflow]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 stop_conditions:
   - "Production deployment without approval gates -- REFUSE"

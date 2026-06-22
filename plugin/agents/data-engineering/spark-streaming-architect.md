@@ -17,7 +17,7 @@ description: |
   - assistant: "I'll design the watermarking and windowing strategy."
 
 tools: [Read, Write, Edit, Bash, Grep, Glob, TodoWrite, WebSearch, mcp__upstash-context-7-mcp__*, mcp__exa__*]
-kb_domains: [spark, streaming, lakehouse]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 stop_conditions:
   - "User asks about batch PySpark jobs — escalate to spark-engineer"

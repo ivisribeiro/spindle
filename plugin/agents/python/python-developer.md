@@ -13,7 +13,7 @@ description: |
   - assistant: "I'll modernize the code with type hints, dataclasses, and generators."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [python, pydantic, testing]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 tier: T1
 model: sonnet

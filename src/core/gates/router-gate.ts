@@ -30,6 +30,14 @@ function listAgentFiles(dir: string): string[] {
   return out.sort();
 }
 
+function isDir(p: string): boolean {
+  try {
+    return fs.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 export function gRouterCoverage(ctx: GateContext): GateResult {
   const gate = 'G_ROUTER_COVERAGE';
   const agentsDir = ctx.args.agents;
@@ -45,16 +53,26 @@ export function gRouterCoverage(ctx: GateContext): GateResult {
   const reasons: string[] = [];
   const unmet: string[] = [];
 
-  // 1. Parse every agent frontmatter, fail-closed.
+  // --kb resolves the KB root for the referential-integrity check (NOT usage
+  // proof): a declared domain must point at a real dir. Default plugin/kb under root.
+  const kbDir = ctx.args.kb ? path.resolve(ctx.root, ctx.args.kb) : path.resolve(ctx.root, 'plugin/kb');
+  const kbPresent = isDir(kbDir);
+
+  // 1. Parse every agent frontmatter, fail-closed. Keep kb_domains for step 4
+  //    (only the strict-parse path exposes it; a degraded name-fallback cannot).
   const rosterNames: string[] = [];
+  const declaredDomains: Array<{ agent: string; domain: string }> = [];
   for (const file of listAgentFiles(agentsDir)) {
     const md = fs.readFileSync(file, 'utf-8');
     const fm = parseAgentFrontmatter(md);
     if (!fm.ok) {
       reasons.push(`invalid agent frontmatter: ${path.relative(agentsDir, file)} (${fm.error})`);
       unmet.push(path.relative(agentsDir, file));
-    } else {
-      rosterNames.push(fm.data!.name);
+      continue;
+    }
+    rosterNames.push(fm.data!.name);
+    for (const d of fm.data!.kb_domains ?? []) {
+      declaredDomains.push({ agent: fm.data!.name, domain: d });
     }
   }
 
@@ -89,8 +107,34 @@ export function gRouterCoverage(ctx: GateContext): GateResult {
     }
   }
 
+  // 4. Referential integrity for kb_domains (NOT usage proof). Only checked when
+  //    at least one agent declares a domain — zero declarations skips the check
+  //    entirely, so a roster with no KB usage (and no kb dir) still passes.
+  if (declaredDomains.length > 0) {
+    if (!kbPresent) {
+      reasons.push(
+        `cannot verify ${declaredDomains.length} declared kb_domains: KB dir not found at ${kbDir} (pass --kb)`
+      );
+      unmet.push('kb-dir-missing');
+    } else {
+      for (const { agent, domain } of declaredDomains) {
+        if (!isDir(path.join(kbDir, domain))) {
+          reasons.push(
+            `agent "${agent}" declares kb_domain "${domain}" with no dir at ${path.join(kbDir, domain)} (referential integrity, not usage proof)`
+          );
+          unmet.push(`dangling-kb-domain:${agent}:${domain}`);
+        }
+      }
+    }
+  }
+
   if (unmet.length === 0) {
-    return pass(gate, [`bijection holds over ${rosterNames.length} agents`]);
+    return pass(gate, [
+      `bijection holds over ${rosterNames.length} agents`,
+      kbPresent && declaredDomains.length > 0
+        ? `all ${declaredDomains.length} declared kb_domains resolve (referential integrity)`
+        : 'no kb_domains to verify',
+    ]);
   }
   return block(gate, reasons, unmet);
 }

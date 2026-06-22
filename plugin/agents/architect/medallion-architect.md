@@ -12,7 +12,7 @@ description: |
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
 tier: T1
-kb_domains: [medallion, data-modeling, lakehouse, data-quality]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 color: purple
 model: sonnet

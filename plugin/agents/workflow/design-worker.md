@@ -1,5 +1,7 @@
 ---
 name: design-worker
+kb_domains:
+  - spindle-harness
 description: Phase 2 DESIGN worker. Reads the approved DEFINE artifact and produces DESIGN.md (Overview, File Manifest table, Decisions) plus a design handoff sidecar for `spin complete`.
 model: opus
 tools: Read, Write, Grep, Glob

@@ -17,7 +17,7 @@ tools: [Read, Write, Edit, Glob, Grep, AskUserQuestion, TodoWrite]
 model: sonnet
 color: yellow
 tier: T1
-kb_domains: [python]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 ---
 

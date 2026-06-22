@@ -1,5 +1,7 @@
 ---
 name: ship-worker
+kb_domains:
+  - spindle-harness
 description: |
   Phase 4 worker: archive what shipped into SHIPPED.md + capture lessons learned.
   Prose only; G_SHIP already certified that all BUILD criteria passed.

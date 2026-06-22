@@ -13,7 +13,7 @@ description: |
     assistant: "Let me invoke the data-quality-analyst to author the contract."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [data-quality, dbt, data-modeling]
+kb_domains: []
 color: green
 tier: T2
 model: sonnet

@@ -17,6 +17,11 @@ export const AgentFrontmatter = z.object({
   model: z.string().optional(),
   tools: z.union([z.string(), z.array(z.string())]).optional(),
   output_schema: z.string().optional(),
+  // KB domains this agent declares it reads. OPTIONAL + additive (agents without
+  // the key stay valid). This is the ONLY place src/ becomes aware of kb_domains —
+  // gRouterCoverage uses it for a referential-integrity check (does the domain dir
+  // exist), NOT proof the model read it at runtime.
+  kb_domains: z.array(z.string()).optional(),
 });
 export type AgentFrontmatter = z.infer<typeof AgentFrontmatter>;
 

@@ -1,5 +1,7 @@
 ---
 name: define-worker
+kb_domains:
+  - spindle-harness
 description: "Worker agent for the DEFINE phase. Reads brainstorm/context artifacts, writes DEFINE.md (Why/What/Acceptance Criteria with stable AC-n IDs) and a define JSON handoff sidecar. Routed to opus via the define-intent task-kind."
 model: opus
 tools:

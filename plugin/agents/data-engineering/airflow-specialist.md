@@ -17,7 +17,7 @@ description: |
   - assistant: "I'll use the airflow-specialist agent to diagnose and optimize."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite, WebSearch]
-kb_domains: [airflow, sql-patterns, data-quality]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 stop_conditions:
   - "User asks about PySpark job optimization — escalate to spark-engineer"

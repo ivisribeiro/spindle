@@ -12,7 +12,7 @@ description: |
   - assistant: "I'll use the lakeflow-specialist to design the DLT pipeline with expectations."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [lakeflow, lakehouse, spark, data-quality]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 color: red
 ---

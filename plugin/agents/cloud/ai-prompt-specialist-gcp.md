@@ -19,7 +19,7 @@ description: |
   </example>
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite, WebSearch, WebFetch, mcp__upstash-context-7-mcp__*, mcp__exa__*, mcp__firecrawl__*]
-kb_domains: [prompt-engineering, genai, pydantic, gcp]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 stop_conditions:
   - "Task outside prompt engineering / Gemini scope -- escalate to appropriate specialist"

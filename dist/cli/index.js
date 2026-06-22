@@ -14212,11 +14212,11 @@ var require_out = __commonJS({
       async.read(path11, getSettings(optionsOrSettingsOrCallback), callback);
     }
     exports.stat = stat;
-    function statSync2(path11, optionsOrSettings) {
+    function statSync3(path11, optionsOrSettings) {
       const settings = getSettings(optionsOrSettings);
       return sync.read(path11, settings);
     }
-    exports.statSync = statSync2;
+    exports.statSync = statSync3;
     function getSettings(settingsOrOptions = {}) {
       if (settingsOrOptions instanceof settings_1.default) {
         return settingsOrOptions;
@@ -14881,41 +14881,41 @@ var require_queue = __commonJS({
       queue.drained = drained;
       return queue;
       function push(value) {
-        var p = new Promise(function(resolve2, reject) {
+        var p = new Promise(function(resolve3, reject) {
           pushCb(value, function(err, result) {
             if (err) {
               reject(err);
               return;
             }
-            resolve2(result);
+            resolve3(result);
           });
         });
         p.catch(noop);
         return p;
       }
       function unshift(value) {
-        var p = new Promise(function(resolve2, reject) {
+        var p = new Promise(function(resolve3, reject) {
           unshiftCb(value, function(err, result) {
             if (err) {
               reject(err);
               return;
             }
-            resolve2(result);
+            resolve3(result);
           });
         });
         p.catch(noop);
         return p;
       }
       function drained() {
-        var p = new Promise(function(resolve2) {
+        var p = new Promise(function(resolve3) {
           process.nextTick(function() {
             if (queue.idle()) {
-              resolve2();
+              resolve3();
             } else {
               var previousDrain = queue.drain;
               queue.drain = function() {
                 if (typeof previousDrain === "function") previousDrain();
-                resolve2();
+                resolve3();
                 queue.drain = previousDrain;
               };
             }
@@ -15401,9 +15401,9 @@ var require_stream3 = __commonJS({
         });
       }
       _getStat(filepath) {
-        return new Promise((resolve2, reject) => {
+        return new Promise((resolve3, reject) => {
           this._stat(filepath, this._fsStatSettings, (error, stats) => {
-            return error === null ? resolve2(stats) : reject(error);
+            return error === null ? resolve3(stats) : reject(error);
           });
         });
       }
@@ -15427,10 +15427,10 @@ var require_async5 = __commonJS({
         this._readerStream = new stream_1.default(this._settings);
       }
       dynamic(root, options) {
-        return new Promise((resolve2, reject) => {
+        return new Promise((resolve3, reject) => {
           this._walkAsync(root, options, (error, entries) => {
             if (error === null) {
-              resolve2(entries);
+              resolve3(entries);
             } else {
               reject(error);
             }
@@ -15440,10 +15440,10 @@ var require_async5 = __commonJS({
       async static(patterns, options) {
         const entries = [];
         const stream = this._readerStream.static(patterns, options);
-        return new Promise((resolve2, reject) => {
+        return new Promise((resolve3, reject) => {
           stream.once("error", reject);
           stream.on("data", (entry) => entries.push(entry));
-          stream.once("end", () => resolve2(entries));
+          stream.once("end", () => resolve3(entries));
         });
       }
     };
@@ -20761,7 +20761,12 @@ var KbConceptHandoff = external_exports.object({
   concept: external_exports.string().min(1),
   summary: external_exports.string().min(1),
   test_cases: external_exports.array(external_exports.string()).default([]),
-  needs_decoding: external_exports.boolean().default(false)
+  needs_decoding: external_exports.boolean().default(false),
+  // E-1 honesty: when a worker flags an opaque encoding it must say WHAT is
+  // undecoded, not just raise the flag. Optional at the schema layer (additive);
+  // gKbCoverage enforces note-required-iff-needs_decoding so the block names the
+  // offending concept.
+  decoding_note: external_exports.string().optional()
 });
 var AuditHandoff = external_exports.object({
   domain: external_exports.string().min(1),
@@ -21053,6 +21058,22 @@ function safeJson(filePath) {
 // src/core/gates/kb-gates.ts
 import * as fs7 from "node:fs";
 import * as path4 from "node:path";
+var KbSlug = external_exports.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "slug must be kebab-case [a-z0-9-], no slash or dot");
+var KbManifestSchema = external_exports.object({ concepts: external_exports.array(external_exports.object({ slug: KbSlug })).min(1, "manifest needs >=1 concept") }).strict();
+function loadManifest(dir) {
+  const manifestPath = path4.join(dir, "manifest.json");
+  let raw;
+  try {
+    raw = JSON.parse(fs7.readFileSync(manifestPath, "utf-8"));
+  } catch {
+    return { ok: false, errors: [`manifest.json missing or invalid JSON: ${manifestPath}`] };
+  }
+  const parsed = KbManifestSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, errors: parsed.error.issues.map((e) => `${e.path.join(".") || "(root)"}: ${e.message}`) };
+  }
+  return { ok: true, data: parsed.data };
+}
 function exists(p) {
   return !!p && fs7.existsSync(p);
 }
@@ -21075,6 +21096,13 @@ function gKbStructure(ctx) {
     reasons.push("no concept files (concept-*.md)");
     unmet.push("concepts");
   }
+  if (exists(path4.join(dir, "manifest.json"))) {
+    const loaded = loadManifest(dir);
+    if (!loaded.ok) {
+      reasons.push(...loaded.errors);
+      unmet.push("manifest-shape");
+    }
+  }
   return unmet.length === 0 ? pass(gate, ["KB structure complete"]) : block(gate, reasons, unmet);
 }
 function gKbCoverage(ctx) {
@@ -21083,18 +21111,12 @@ function gKbCoverage(ctx) {
   if (!dir || !fs7.existsSync(dir)) {
     return block(gate, [`KB domain dir not found: ${dir ?? "(unset)"}`], ["domain-dir"]);
   }
-  const manifestPath = path4.join(dir, "manifest.json");
-  let manifest;
-  try {
-    manifest = JSON.parse(fs7.readFileSync(manifestPath, "utf-8"));
-  } catch {
-    return block(gate, [`manifest.json missing or invalid: ${manifestPath}`], ["manifest"]);
+  const loaded = loadManifest(dir);
+  if (!loaded.ok) {
+    return block(gate, loaded.errors, ["manifest-shape"]);
   }
+  const concepts = loaded.data.concepts;
   const minCases = ctx.runState && ctx.graph ? ctx.graph.getSchema().config?.kb_min_test_cases ?? 1 : 1;
-  const concepts = manifest.concepts ?? [];
-  if (concepts.length === 0) {
-    return block(gate, ["manifest declares zero concepts"], ["concepts"]);
-  }
   const reasons = [];
   const unmet = [];
   for (const { slug } of concepts) {
@@ -21116,6 +21138,10 @@ function gKbCoverage(ctx) {
           reasons.push(`concept "${slug}" has fewer than ${minCases} test case(s)`);
           unmet.push(`test-cases:${slug}`);
         }
+        if (data.needs_decoding === true && !(data.decoding_note ?? "").trim()) {
+          reasons.push(`concept "${slug}" sets needs_decoding=true but has no decoding_note (E-1)`);
+          unmet.push(`e1-decoding-note:${slug}`);
+        }
       }
     }
   }
@@ -21133,7 +21159,12 @@ var AgentFrontmatter = external_exports.object({
   description: external_exports.string().min(1, "agent description is required"),
   model: external_exports.string().optional(),
   tools: external_exports.union([external_exports.string(), external_exports.array(external_exports.string())]).optional(),
-  output_schema: external_exports.string().optional()
+  output_schema: external_exports.string().optional(),
+  // KB domains this agent declares it reads. OPTIONAL + additive (agents without
+  // the key stay valid). This is the ONLY place src/ becomes aware of kb_domains —
+  // gRouterCoverage uses it for a referential-integrity check (does the domain dir
+  // exist), NOT proof the model read it at runtime.
+  kb_domains: external_exports.array(external_exports.string()).optional()
 });
 var FENCE = /^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/;
 function extractFrontmatterBlock(markdown) {
@@ -21195,6 +21226,13 @@ function listAgentFiles(dir) {
   walk(dir);
   return out.sort();
 }
+function isDir(p) {
+  try {
+    return fs8.statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+}
 function gRouterCoverage(ctx) {
   const gate = "G_ROUTER_COVERAGE";
   const agentsDir = ctx.args.agents;
@@ -21207,15 +21245,21 @@ function gRouterCoverage(ctx) {
   }
   const reasons = [];
   const unmet = [];
+  const kbDir = ctx.args.kb ? path5.resolve(ctx.root, ctx.args.kb) : path5.resolve(ctx.root, "plugin/kb");
+  const kbPresent = isDir(kbDir);
   const rosterNames = [];
+  const declaredDomains = [];
   for (const file of listAgentFiles(agentsDir)) {
     const md = fs8.readFileSync(file, "utf-8");
     const fm = parseAgentFrontmatter(md);
     if (!fm.ok) {
       reasons.push(`invalid agent frontmatter: ${path5.relative(agentsDir, file)} (${fm.error})`);
       unmet.push(path5.relative(agentsDir, file));
-    } else {
-      rosterNames.push(fm.data.name);
+      continue;
+    }
+    rosterNames.push(fm.data.name);
+    for (const d of fm.data.kb_domains ?? []) {
+      declaredDomains.push({ agent: fm.data.name, domain: d });
     }
   }
   let routing;
@@ -21244,8 +21288,28 @@ function gRouterCoverage(ctx) {
       unmet.push(`extra:${name}`);
     }
   }
+  if (declaredDomains.length > 0) {
+    if (!kbPresent) {
+      reasons.push(
+        `cannot verify ${declaredDomains.length} declared kb_domains: KB dir not found at ${kbDir} (pass --kb)`
+      );
+      unmet.push("kb-dir-missing");
+    } else {
+      for (const { agent, domain } of declaredDomains) {
+        if (!isDir(path5.join(kbDir, domain))) {
+          reasons.push(
+            `agent "${agent}" declares kb_domain "${domain}" with no dir at ${path5.join(kbDir, domain)} (referential integrity, not usage proof)`
+          );
+          unmet.push(`dangling-kb-domain:${agent}:${domain}`);
+        }
+      }
+    }
+  }
   if (unmet.length === 0) {
-    return pass(gate, [`bijection holds over ${rosterNames.length} agents`]);
+    return pass(gate, [
+      `bijection holds over ${rosterNames.length} agents`,
+      kbPresent && declaredDomains.length > 0 ? `all ${declaredDomains.length} declared kb_domains resolve (referential integrity)` : "no kb_domains to verify"
+    ]);
   }
   return block(gate, reasons, unmet);
 }
@@ -21845,13 +21909,18 @@ var GATE_DOCS = {
   },
   G_ROUTER_COVERAGE: {
     gate: "G_ROUTER_COVERAGE",
-    purpose: "Bijection between the agent roster and the routing table \u2014 no silent skips.",
-    reads: ["the agents dir (--agents)", "the routing.json (--routing)"],
+    purpose: "Bijection between the agent roster and the routing table, plus kb_domains referential integrity \u2014 no silent skips.",
+    reads: [
+      "the agents dir (--agents)",
+      "the routing.json (--routing)",
+      "the kb dir (--kb, default plugin/kb) for declared kb_domains"
+    ],
     blocks_when: [
       "an agent frontmatter fails to parse",
-      "an agent is missing from routing, or routing lists an agent that does not exist"
+      "an agent is missing from routing, or routing lists an agent that does not exist",
+      "an agent declares a kb_domain with no matching <kb>/<domain>/ dir (referential integrity, not usage proof)"
     ],
-    flags: ["--agents <dir> (required)", "--routing <file> (required)"]
+    flags: ["--agents <dir> (required)", "--routing <file> (required)", "--kb <dir> (optional; default plugin/kb)"]
   },
   G_REVIEW_BLOCK: {
     gate: "G_REVIEW_BLOCK",
@@ -22540,10 +22609,11 @@ async function runCli(argv, write = (chunk) => process.stdout.write(chunk)) {
   program2.command("validate <idOrPath>").action(function(idOrPath) {
     emit(validateHandler(root(this), idOrPath));
   });
-  program2.command("gate <gateId>").option("--agents <dir>", "agents dir (G_ROUTER_COVERAGE)").option("--routing <file>", "routing.json (G_ROUTER_COVERAGE)").option("--findings <file>", "findings.json (G_REVIEW_BLOCK)").option("--handoff <file>", "audit.json sidecar (G_AUDIT)").option("--audit <file>", "audit.json sidecar (G_OPS_CONFIG, G_PLAN)").action(function(gateId, opts) {
+  program2.command("gate <gateId>").option("--agents <dir>", "agents dir (G_ROUTER_COVERAGE)").option("--routing <file>", "routing.json (G_ROUTER_COVERAGE)").option("--kb <dir>", "kb dir for kb_domains referential check (G_ROUTER_COVERAGE; default plugin/kb)").option("--findings <file>", "findings.json (G_REVIEW_BLOCK)").option("--handoff <file>", "audit.json sidecar (G_AUDIT)").option("--audit <file>", "audit.json sidecar (G_OPS_CONFIG, G_PLAN)").action(function(gateId, opts) {
     const args = {};
     if (opts.agents) args.agents = opts.agents;
     if (opts.routing) args.routing = opts.routing;
+    if (opts.kb) args.kb = opts.kb;
     if (opts.findings) args.findings = opts.findings;
     if (opts.handoff) args.handoff = opts.handoff;
     if (opts.audit) args.audit = opts.audit;

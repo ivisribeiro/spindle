@@ -17,7 +17,7 @@ description: |
   - assistant: "I'll diagnose data skew and partition imbalance."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [spark, sql-patterns]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 color: red
 ---

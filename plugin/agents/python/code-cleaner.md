@@ -13,7 +13,7 @@ description: |
   - assistant: "I'll apply DRY principles to eliminate duplication."
 
 tools: [Read, Write, Edit, Grep, Glob, TodoWrite]
-kb_domains: [python]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 tier: T2
 model: sonnet

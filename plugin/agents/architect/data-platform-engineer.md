@@ -18,7 +18,7 @@ description: |
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
 tier: T2
-kb_domains: [cloud-platforms, lakehouse, data-modeling]
+kb_domains: []
 color: yellow
 model: sonnet
 stop_conditions:

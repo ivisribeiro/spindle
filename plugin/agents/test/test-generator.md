@@ -13,7 +13,7 @@ description: |
     assistant: "I'll generate pytest tests with fixtures and edge cases."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [data-quality, dbt, testing]
+kb_domains: []
 color: green
 tier: T2
 model: sonnet

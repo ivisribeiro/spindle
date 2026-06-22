@@ -16,7 +16,7 @@ description: |
   - assistant: "Let me invoke the ai-data-engineer for feature store design."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [ai-data-engineering, data-quality, streaming]
+kb_domains: []
 color: purple
 model: sonnet
 stop_conditions:

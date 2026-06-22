@@ -23,7 +23,7 @@ description: |
   - assistant: "I'll use the qdrant-specialist agent to configure the Qdrant Vector Store node in Tool mode for the AI Agent."
 
 tools: [Read, Write, Edit, MultiEdit, Grep, Glob, Bash, TodoWrite, WebSearch, WebFetch, mcp__upstash-context-7-mcp__*, mcp__exa__*]
-kb_domains: [ai-data-engineering, genai]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 stop_conditions:
   - "User asks about general RAG architecture without Qdrant — escalate to ai-data-engineer"

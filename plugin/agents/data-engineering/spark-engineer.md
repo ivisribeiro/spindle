@@ -16,7 +16,7 @@ description: |
   - assistant: "Let me invoke the spark-engineer to diagnose and optimize."
 
 tools: [Read, Write, Edit, Grep, Glob, Bash, TodoWrite]
-kb_domains: [spark, sql-patterns, streaming]
+kb_domains: []
 color: red
 model: sonnet
 stop_conditions:

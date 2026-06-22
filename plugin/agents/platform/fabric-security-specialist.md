@@ -2,7 +2,7 @@
 name: fabric-security-specialist
 tier: T3
 model: opus
-kb_domains: [microsoft-fabric]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 description: |
   Expert in Microsoft Fabric security, governance, and compliance.

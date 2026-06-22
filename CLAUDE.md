@@ -125,7 +125,7 @@ between `src/`+`schemas/` and `plugin/`.
 | `spin state` | the `run.json` ledger (`completed[]`, `retries{}`, `gates{}`) |
 | `spin complete <id> [--handoff f.json]` | validate the handoff against the artifact's schema, THEN mark complete (exit 1 if invalid) |
 | `spin validate <id\|path>` | structural checks (md sections / manifest table / criteria IDs); exit 0/1 |
-| `spin gate <gateId> [--agents d] [--routing f] [--findings f]` | run a named gate; exit 0 pass / 1 BLOCK with `{gate,passed,reasons,unmet}` |
+| `spin gate <gateId> [--agents d] [--routing f] [--kb d] [--findings f]` | run a named gate; exit 0 pass / 1 BLOCK with `{gate,passed,reasons,unmet}`. `--kb` (default `plugin/kb`) backs G_ROUTER_COVERAGE's kb_domains referential check |
 | `spin diff-criteria --define f --build f` | set-diff DEFINE criteria vs BUILD passed -> `unmet[]` |
 | `spin handoff-check <schemaId> <file.json>` | standalone handoff validation |
 | `spin retry <id> --inc \| --ok` | retry counter vs `config.build_retry_cap`; `--ok` exits 1 at ceiling |
@@ -140,14 +140,19 @@ between `src/`+`schemas/` and `plugin/`.
 `G_DEFINE` (before /design), `G_DESIGN` (before /build), `G_BUILD` (before
 /ship — every manifest file exists on disk + criteria-diff empty + BUILD_REPORT
 exists), `G_SHIP` (define.criteria minus build.passed is empty), `G_KB_STRUCTURE`,
-`G_KB_COVERAGE`, `G_ROUTER_COVERAGE` (agent→routing bijection, no silent skips),
+`G_KB_COVERAGE` (every manifest concept authored + enough test cases; manifest shape
+is Zod-validated; E-1: a `needs_decoding` concept must carry a non-empty
+`decoding_note`), `G_ROUTER_COVERAGE` (agent→routing bijection, no silent skips, PLUS
+kb_domains referential integrity — every declared domain must resolve to a
+`--kb`/`plugin/kb` dir; existence, NOT usage proof),
 `G_REVIEW_BLOCK` (surviving CRITICAL findings > 0 ⇒ block; shared by /review and
 /migrate), `G_HANDOFF` (enforced inside `spin complete --handoff`).
 
 **Handoff schema ids** (the `handoff:` field / `spin complete --handoff` /
 `spin handoff-check`):
 `define`, `design`, `build-task`, `build-report`, `finding`, `claim`,
-`migration-plan`, `claudemd-section`, `kb-concept`.
+`migration-plan`, `claudemd-section`, `kb-concept` (carries optional `decoding_note`
+for the E-1 honesty rule), `audit`.
 
 **Route task-kinds** (`spin route <kind>`), by tier:
 - **HAIKU** (mechanical, gate-backstopped): `file-read`, `structure-extract`,

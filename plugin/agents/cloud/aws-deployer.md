@@ -21,7 +21,7 @@ description: |
   </example>
 
 tools: [Read, Write, Edit, Bash, TodoWrite, mcp__upstash-context-7-mcp__*, mcp__exa__*]
-kb_domains: [aws, terraform]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 stop_conditions:
   - "Production deployment without explicit user approval -- REFUSE"

@@ -17,7 +17,7 @@ description: |
   - assistant: "I'll use the spark-specialist agent to configure optimal settings."
 
 tools: [Read, Write, Edit, Bash, Grep, Glob, TodoWrite, WebSearch, Task, mcp__upstash-context-7-mcp__*, mcp__exa__*]
-kb_domains: [spark, sql-patterns, cloud-platforms]
+kb_domains: []
 anti_pattern_refs: [shared-anti-patterns]
 stop_conditions:
   - "User asks about DAG orchestration — escalate to pipeline-architect"
