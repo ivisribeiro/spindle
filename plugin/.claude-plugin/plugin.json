@@ -1,6 +1,6 @@
 {
   "name": "spindle",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Deterministic, testable spec-driven orchestration for Claude Code. The spin CLI is the spine — it never calls a model; it orders, gates, routes, and ledgers the work while slash commands orchestrate Claude around its CLI-enforced gates. Ships 17 core agents + a seeded spindle-harness KB, 11 typed gates, a measurement layer (run-ledger / eval / budget), model routing (Haiku/Sonnet/Opus), and an adversarial verification loop. The domain specialist catalog is an optional, reversible bundle.",
   "author": {
     "name": "Ivis Ribeiro"

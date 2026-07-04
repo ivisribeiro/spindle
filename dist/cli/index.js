@@ -23576,7 +23576,7 @@ async function runCli(argv, write = (chunk) => process.stdout.write(chunk)) {
   };
   const rootOf = (opts) => opts.root ?? process.cwd();
   const program2 = new Command();
-  program2.name("spin").description("Spindle \u2014 deterministic spec-driven orchestration spine").version("0.1.0").option("--root <dir>", "project root containing .spindle/ (default: cwd)").enablePositionalOptions();
+  program2.name("spin").description("Spindle \u2014 deterministic spec-driven orchestration spine").version("0.2.0").option("--root <dir>", "project root containing .spindle/ (default: cwd)").enablePositionalOptions();
   const root = (cmd) => rootOf(cmd.optsWithGlobals());
   program2.command("init").option("--schema <name>", "workflow schema (sdd | kb)", "sdd").option("--feature <slug>", "feature slug", "feature").option(
     "--force",
