@@ -43,9 +43,12 @@ spin  ─── deterministic spine ───  never calls a model
 
 Routing *predicts*, gates *block* — and a third deterministic layer **measures** whether either was right, closing the loop back into the harness. All of it is pure, offline reads over `.spindle/`; the model-free guard forbids tokenizers and pricing in `src/` so measurement can never grow model-awareness.
 
-- **`spin trace`** — the run-ledger: an append-only `events[]` timeline (`complete`/`gate`/`retry`/`approve`) with a tier histogram and summed reported tokens. A pure read, exit 0.
+- **`spin trace`** — the run-ledger: an append-only `events[]` timeline (`complete`/`gate`/`retry`/`approve`) with a tier histogram and summed reported tokens. A pure read, exit 0. Events are **hash-chained** (each carries a sha256 over its content + the previous hash), and `spin trace --verify` walks the chain — exit 1 names the first broken link, so a hand-edited history is tamper-*evident* (the state maps remain plain JSON; see STATUS.md for the honest residual limit).
 - **`spin eval`** — replays a corpus of recorded fixtures through the **real** gate functions; a gate that stops blocking what it used to block is a regression CI catches, with no model and no network. `--strict` is fail-closed on incomplete coverage — and the bundled corpus now covers **all 11 registry gates** with a pass *and* a block fixture, so `npm run eval` runs `--strict` green in CI (a new gate without fixtures fails the build).
-- **`spin budget`** — reconciles model-reported token spend per tier against an optional ceiling. **Accounting, not enforcement:** advisory, always exit 0 — a genuinely expensive task should cost a lot, and the spine cannot independently verify a self-reported count.
+- **`spin budget`** — reconciles model-reported token spend per tier against an optional ceiling. **Accounting, not enforcement** by default: advisory, exit 0 — the spine cannot independently verify a self-reported count. `--enforce` is the opt-in ceiling (flag or `config.max_tokens`): exit 1 on overage, and the output always carries `self_reported: true` so nobody mistakes it for measured spend.
+- **`spin route --stats`** — advisory per-tier accounting aggregated from the ledger (completions, reported tokens, retries per artifact). Same doctrine: it informs routing-table edits, it never enforces.
+- **`spin doctor`** — read-only orientation: node version, run health, schema validity, gate verdicts, and the exact next slash command to run. The first-run entry point.
+- **`spin verify-self`** — recomputes sha256 over both built CLI bundles and every schema file against `verification/checksums.json` (written at build). The "dist is build output, never hand-edit" invariant becomes checkable, with node builtins only.
 
 See [`docs/MEASUREMENT.md`](docs/MEASUREMENT.md) for the doctrine and its honest limits.
 
@@ -98,18 +101,18 @@ Copy `dist/` into your project and invoke `node dist/cli/index.js` directly. Pin
 
 | Command | What it does | Exit codes |
 |---|---|---|
-| `spin init --schema <sdd\|kb> --feature <slug>` | Scaffold `.spindle/`, copy editable schema to `.spindle/schema.yaml`, create `run.json` | 0 / 2 |
+| `spin init --schema <sdd\|kb\|brownfield> --feature <slug> [--force]` | Scaffold `.spindle/`, copy editable schema to `.spindle/schema.yaml`, create `run.json`. **Refuses to clobber an in-progress run** (exit 1) unless `--force` — a human-only escape hatch | 0 / 1 / 2 |
 | `spin next` | `{ feature, ready:[{id,model,parallel_group}], blocked:{}, gate_blocked:{}, detected_on_disk:[], complete:bool }` — readiness is **ledger-authoritative + gate-aware**: an artifact is `gate_blocked` until the lifecycle gate before it is green; a stray `.md` only shows in `detected_on_disk`, never `ready` | 0 |
 | `spin order` | Full Kahn build order for the active schema | 0 |
 | `spin state` (alias `spin status`) | Print the `run.json` ledger (`completed[]`, `retries{}`, `gates{}`) | 0 |
 | `spin explain <gateId>` | What a gate reads, what blocks it, which flags apply — no source-diving | 0 / 2 |
-| `spin complete <id> [--handoff f.json]` | Validate the worker handoff against the artifact's schema, then mark complete. **exit 1** if the handoff is invalid OR a lifecycle gate required before `<id>` (schema `gates:` map) hasn't passed | 0 / 1 |
+| `spin complete <id> [--handoff f.json]` | Validate the worker handoff against the artifact's schema, then mark complete. **exit 1** if the handoff is invalid, a lifecycle gate required before `<id>` (schema `gates:` map — incl. the terminal `during`/`before_complete` hooks on the final artifact) hasn't passed, or a handoff-less artifact's `generates` output is missing on disk. A stray `--handoff` on a handoff-less artifact is a usage error | 0 / 1 / 2 |
 | `spin validate <id\|path>` | Structural checks (MD sections / manifest table / criteria IDs) | 0 / 1 |
 | `spin gate <gateId> [--agents d] [--routing f] [--kb d] [--findings f]` | Run a named gate. exit 0 = pass, exit 1 = BLOCK with `{gate,passed,reasons,unmet}`. An **unknown** gate id is a usage error (exit 2) and writes nothing to the ledger | 0 / 1 / 2 |
 | `spin diff-criteria --define f --build f` | Set-diff DEFINE criteria vs BUILD passed → `unmet[]` | 0 / 1 |
 | `spin handoff-check <schemaId> <file.json>` | Standalone handoff validation | 0 / 1 |
 | `spin retry <id> --inc \| --ok` | Retry counter vs `config.build_retry_cap`. `--ok` exits 1 at ceiling | 0 / 1 |
-| `spin route <taskKind> [--budget std\|low]` | Model tier for an agent: `{ tier, model, reason }` | 0 |
+| `spin route <taskKind> [--budget std\|low]` · `spin route --stats` | Model tier for an agent: `{ tier, model, reason }`; `--stats` aggregates advisory per-tier outcomes (completions, tokens, retries) from the ledger | 0 / 2 |
 | `spin tier [--risk\|--breadth\|--have-context\|--mechanical\|--reversible\|--irreversible]` | Orchestration tier T0/T1/T2 — main loop / one agent / fan-out | 0 |
 | `spin reconcile --audit f.json` | Doc-vs-code drift over an audit handoff | 0 / 1 |
 | `spin config-drift --declared a,b --present a` | Tools required by CI but absent from the lockfile | 0 / 1 |
@@ -117,10 +120,12 @@ Copy `dist/` into your project and invoke `node dist/cli/index.js` directly. Pin
 | `spin schema show\|validate [handoffId]` | Inspect/validate the active schema; `show <handoff-id>` describes a handoff JSON shape | 0 / 1 / 2 |
 | `spin approve [--by <name>]` | Record human sign-off (required by `G_SHIP`). **Refuses unless run in an interactive TTY** — an agent cannot approve. No bypass flag | 0 / 2 |
 | `spin invalidate <id>` | After an `/iterate` edit: drop `<id>` + its downstream closure from the ledger and void all gate verdicts + approval, so no stale-green survives | 0 / 2 |
-| `spin trace` | Print the run-ledger timeline (`events[]`) + a tier/token summary — a pure read | 0 |
+| `spin trace [--verify]` | Print the run-ledger timeline (`events[]`) + a tier/token summary — a pure read. `--verify` walks the event hash chain: exit 1 names the first broken link | 0 / 1 |
 | `spin eval [--strict]` | Replay the eval corpus through the **real** gates; exit 1 on any verdict regression. `--strict` also fails if a registry gate lacks a pass+block fixture | 0 / 1 |
-| `spin budget [--max-tokens n]` | Reconcile reported token spend per tier vs an optional ceiling. Advisory — always exit 0 | 0 |
-| `spin fanout-check` | Assert no `parallel_group` is partially complete (a dropped fan-out worker) | 0 / 1 |
+| `spin budget [--max-tokens n] [--enforce]` | Reconcile reported token spend per tier vs an optional ceiling. Advisory by default (exit 0); `--enforce` (flag or `config.max_tokens` ceiling) exits 1 on overage, always marked `self_reported: true` | 0 / 1 / 2 |
+| `spin fanout-check [--manifest f] [--handoffs d]` | Ledger mode: assert no `parallel_group` is partially complete. File mode (`--manifest`): compare the design manifest to per-file `build-task` sidecars — `missing[]` is the exact re-dispatch payload for a dropped build worker | 0 / 1 / 2 |
+| `spin doctor` | Read-only orientation: env, run health, schema validity, and the exact next slash command — a report, never a block | 0 |
+| `spin verify-self` | Recompute sha256 of both dist bundles + all schemas vs `verification/checksums.json`; exit 1 names tampered/missing files | 0 / 1 / 2 |
 | `spin merge-findings <files...> [--out f]` | Deterministically merge N finding files (dedup by file+line+rule, keep higher severity, aggregate `sources`) into one `{findings,sources}` for `G_REVIEW_BLOCK` | 0 / 1 |
 | `spin kb-install <domain> [--from][--dest]` | Publish a generated KB domain (flat layout) from `.spindle/` into `plugin/kb/` so `kb_domains` resolves; pure file copy | 0 / 1 / 2 |
 | `spin kinds` | List known routing task-kinds | 0 |
@@ -150,6 +155,8 @@ Gates are run via `spin gate <id>`. A command that receives exit 1 surfaces `{ga
 
 The **11** gates above the line are dispatchable via `spin gate <id>` (the gate registry — what `spin eval --strict` covers). `G_HANDOFF` is not a registry gate: it's enforced inline by `spin complete --handoff`, listed here for completeness.
 
+**Lifecycle hooks are engine-enforced, not prose.** A workflow schema's `gates:` map accepts a closed set of hook keys — `before_<artifactId>` (green before that artifact completes or is listed ready), and the terminal `before_complete` / `during` (green before the final artifact completes and before the run reports `complete:true`). `spin complete` and `spin next` apply them directly; `spin schema validate` rejects any hook key the engine cannot anchor, so a declared hook can never be silently inert.
+
 ---
 
 ## Handoff schema IDs
@@ -158,7 +165,7 @@ Workers write a JSON sidecar matching one of these schema IDs; the slash command
 
 `define` · `design` · `build-task` · `build-report` · `finding` · `claim` · `migration-plan` · `claudemd-section` · `kb-concept` · `audit`
 
-> The `audit` handoff is the **brownfield** contract — structured `built[]`/`gaps[]`/`weakPoints[]`/`opsReadiness[]`/`proposedTasks[]`/`invariants_at_risk[]` — driven by the separate `brownfield` schema (`audit → define → design`) and the `/audit` command, so the spine models audit-then-plan, not just greenfield. See `docs/IMPROVEMENTS_FROM_DOGFOOD.md`.
+> The `audit` handoff is the **brownfield** contract — structured `built[]`/`gaps[]`/`weakPoints[]`/`opsReadiness[]`/`proposedTasks[]`/`invariants_at_risk[]` — driven by the separate `brownfield` schema (the full `audit → define → design → build → ship` cycle) and the `/audit` command, so the spine models audit-then-plan, not just greenfield. `G_AUDIT` is anchored twice: `before_define` (the run fail-fasts right after the audit phase) and terminal (it can never report complete on an un-evidenced audit). See `docs/IMPROVEMENTS_FROM_DOGFOOD.md`.
 
 ---
 
@@ -191,7 +198,7 @@ Creates `.spindle/`, `.spindle/run.json`, `.spindle/schema.yaml` (your editable 
 Run `/brainstorm`. The command calls `spin next` to get the ready artifact, dispatches an **Opus** worker via Task (the `define-intent` task-kind never downgrades), the worker writes `BRAINSTORM.md` (brainstorm is a no-handoff artifact), then:
 
 ```bash
-spin complete brainstorm
+spin complete brainstorm   # refuses (exit 1) if BRAINSTORM.md is not on disk — no-handoff ≠ no-output
 ```
 
 ### 3. Define
@@ -355,6 +362,8 @@ For an existing codebase, the spine starts from an **audit** — structured evid
 /define ─▶ /design ─▶ /build ─▶ /ship   (the cycle from Flow 1, grounded in the audit)
 ```
 
+The engine holds the line here, not the prose: `define` stays `gate_blocked` until `G_AUDIT` is green (`before_define` hook), and the run can never report complete without it (terminal hook) — a brownfield run cannot outrun its own audit.
+
 ---
 
 ## On-disk layout
@@ -397,7 +406,7 @@ After editing, run `spin schema validate` before running any workflow command. T
 
 ## Test and CI story
 
-The harness ships with **303 unit, integration, and end-to-end tests** across 32 files (run `npm test`) covering:
+The harness ships with **420 unit, integration, and end-to-end tests** across 45 files (run `npm test`) covering:
 
 - Kahn ordering correctness under all dependency topologies (incl. `getDownstream` closure)
 - Gate pass/block logic for every gate ID — phantom-criterion, evidence, CI-verifier-failed, `require_verified_by`, and the `G_SHIP` human-approval requirement
@@ -407,7 +416,9 @@ The harness ships with **303 unit, integration, and end-to-end tests** across 32
 - Exit-code ABI conformance
 - `spin eval` replays the corpus through the real gates so a gate that stops blocking is a caught regression
 - **No-model-calls guard** — the test suite asserts that no `spin` code path imports or invokes an inference SDK. This is enforced as a hard test failure, not a lint warning.
-- E2E: a full `sdd` cycle from `spin init` through `spin gate G_SHIP`, using fixture artifacts and handoffs, verifying that every `spin complete` and gate transition produces the correct `run.json` state.
+- **Machine-verified inventory** — `npm run inventory:check` (also in CI) recounts agents/commands/gates/schemas from source and fails the build if any hand-written count in the marketplace/plugin manifests drifts from reality.
+- Cycle detection in the artifact graph, the event hash chain (build/verify/tamper), the init clobber guard, budget enforcement, and file-level fanout accounting — each with pass AND fail fixtures.
+- E2E: full `sdd`, `kb`, and `brownfield` cycles from `spin init` through their final gates, using fixture artifacts and handoffs, verifying that every `spin complete` and gate transition produces the correct `run.json` state.
 
 ### Run locally
 
