@@ -143,7 +143,7 @@ Gates are run via `spin gate <id>`. A command that receives exit 1 surfaces `{ga
 | `G_DEFINE` | `/design` | DEFINE sections present (`Why`/`What`/`Acceptance Criteria`), define handoff valid, optional clarity floor met |
 | `G_DESIGN` | `/build` | DESIGN sections present (`Overview`/`File Manifest`/`Decisions`), a file-manifest table present, design handoff valid |
 | `G_BUILD` | `/ship` | Every manifest file exists on disk; every DEFINE criterion `passed`; **no phantom criterion** (a `passed` AC-n DEFINE never declared → set-drift); a cited `verified_by` file must exist; **a passed criterion whose CI verifier reported `failed` blocks** (the spine reads the CI result, never runs the verifier); when `config.require_verified_by`, every passed criterion must cite a verifier; manifest/`verified_by` paths must stay inside the project root (no `..` escape); when a CI `coverage` summary is reported, its `pct` must meet its `threshold`; BUILD_REPORT present |
-| `G_SHIP` | publish | DEFINE criteria minus build.passed must be empty; no phantom criterion; surfaces `spec-drift`; **a human approval must be recorded via `spin approve`** — the seam applied to sign-off: a model cannot approve |
+| `G_SHIP` | publish | DEFINE criteria minus build.passed must be empty; no phantom criterion; **unreconciled spec-drift blocks** — a build that CORRECTED a criterion emits a `spec-drift:<AC>` unmet entry per affected criterion until DEFINE is reconciled (`reconciled: true`); **a human approval must be recorded via `spin approve`** — the seam applied to sign-off: a model cannot approve |
 | `G_KB_STRUCTURE` | KB publish | KB structure checks |
 | `G_KB_COVERAGE` | KB publish | KB coverage checks |
 | `G_ROUTER_COVERAGE` | router validate | Agent→routing bijection, no silent skips |
@@ -436,6 +436,17 @@ Add to your pipeline:
 ```
 
 No model credentials needed — all tests are deterministic. The no-model-calls guard will catch any accidental inference import introduced in a future change.
+
+### Gating a project that uses spindle
+
+Everything above is spindle testing itself. A project that *installs*
+spindle can run the same `spin gate` / `spin handoff-check` / `spin schema
+validate` checks in its own CI, so a feature's gates are re-verified on the
+PR, not just claimed inside a chat session. That requires committing the
+relevant `.spindle/` state to the branch — see
+[`docs/CI_RECIPE.md`](docs/CI_RECIPE.md) for exactly what each check needs
+and its honest limits, and [`docs/examples/spindle-gates.yml`](docs/examples/spindle-gates.yml)
+for a complete, copy-pasteable workflow.
 
 ---
 

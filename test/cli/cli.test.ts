@@ -66,6 +66,78 @@ describe('spin CLI exit-code ABI', () => {
     expect(r.json.gate).toBe('G_HANDOFF');
   });
 
+  // --- P2: unknown-key visibility (a typo'd extra key is silently STRIPPED by
+  // Zod's non-strict object, so it must otherwise pass without a trace) ---
+
+  it('handoff-check exits 0 on a valid handoff with a typo\'d extra key AND names it', async () => {
+    const file = `${root}/define.json`;
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        feature: 'x',
+        clarity: 1,
+        criteria: ['AC-1'],
+        files_writen: ['src/a.ts'], // typo of files_written (not even a define field — just illustrative)
+      })
+    );
+    const r = await cli(['--root', root, 'handoff-check', 'define', file]);
+    expect(r.code).toBe(0);
+    expect(r.json.unknown_keys).toEqual(['files_writen']);
+  });
+
+  it('handoff-check on a clean handoff omits unknown_keys entirely', async () => {
+    const file = `${root}/define.json`;
+    fs.writeFileSync(file, JSON.stringify({ feature: 'x', clarity: 1, criteria: ['AC-1'] }));
+    const r = await cli(['--root', root, 'handoff-check', 'define', file]);
+    expect(r.code).toBe(0);
+    expect(r.json.unknown_keys).toBeUndefined();
+  });
+
+  it('handoff-check reports a nested array-item typo with its index path', async () => {
+    const file = `${root}/build-report.json`;
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        feature: 'f',
+        results: [
+          { criterion: 'AC-1', status: 'passed' },
+          { criterion: 'AC-2', status: 'passed', pased: true }, // "pased" is an extra typo'd key
+        ],
+      })
+    );
+    const r = await cli(['--root', root, 'handoff-check', 'build-report', file]);
+    expect(r.code).toBe(0);
+    expect(r.json.unknown_keys).toEqual(['results[1].pased']);
+  });
+
+  it('complete --handoff exits 0 on a typo\'d extra key AND surfaces unknown_keys advisory', async () => {
+    await cli(['--root', root, 'init', '--schema', 'sdd', '--feature', 'f']);
+    const file = `${root}/define.json`;
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        feature: 'f',
+        clarity: 0.9,
+        criteria: ['AC-1'],
+        files_writen: ['src/a.ts'],
+      })
+    );
+    const r = await cli(['--root', root, 'complete', 'define', '--handoff', file]);
+    expect(r.code).toBe(0); // advisory only — never blocks completion
+    expect(r.json.completed).toBe('define');
+    expect(r.json.unknown_keys).toEqual(['files_writen']);
+  });
+
+  it('complete --handoff on a clean handoff omits unknown_keys entirely', async () => {
+    await cli(['--root', root, 'init', '--schema', 'sdd', '--feature', 'f']);
+    const file = `${root}/define.json`;
+    fs.writeFileSync(file, JSON.stringify({ feature: 'f', clarity: 0.9, criteria: ['AC-1'] }));
+    const r = await cli(['--root', root, 'complete', 'define', '--handoff', file]);
+    expect(r.code).toBe(0);
+    expect(r.json.completed).toBe('define');
+    expect(r.json.unknown_keys).toBeUndefined();
+  });
+
   it('gate G_AUDIT passes (exit 0) over a valid --handoff sidecar', async () => {
     const file = `${root}/audit.json`;
     fs.writeFileSync(

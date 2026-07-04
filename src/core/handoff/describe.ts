@@ -22,14 +22,17 @@ export interface HandoffDesc {
   fields: FieldDesc[];
 }
 
-interface Unwrapped {
+export interface Unwrapped {
   core: z.ZodTypeAny;
   required: boolean;
   default?: unknown;
 }
 
+// Exported so `unknown-keys.ts` can peel the same ZodOptional/ZodDefault/ZodNullable
+// wrappers without duplicating this logic (DRY — both modules need the schema's
+// CORE shape, not its optionality wrapper).
 /** Peel ZodOptional / ZodDefault / ZodNullable to find the core type + required-ness. */
-function unwrap(t: z.ZodTypeAny): Unwrapped {
+export function unwrap(t: z.ZodTypeAny): Unwrapped {
   let core = t;
   let required = true;
   let def: unknown;

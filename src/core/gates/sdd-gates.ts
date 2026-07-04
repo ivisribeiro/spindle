@@ -279,9 +279,6 @@ export function gShip(ctx: GateContext): GateResult {
       diff.extra.map((id) => `phantom:${id}`)
     );
   }
-  // Criteria are met — but surface any spec-drift the build flagged (F6). Shipping
-  // is allowed (the correction is legitimate), yet the warning is recorded loudly
-  // in the gate reasons + run-state so a false DEFINE can't ride along unnoticed.
   // Final sign-off: criteria are met, but ship requires un-fakeable human approval
   // (set only by `spin approve` at an interactive terminal — the seam applied to ship).
   if (!ctx.runState?.approval) {
@@ -291,19 +288,28 @@ export function gShip(ctx: GateContext): GateResult {
       ['approval']
     );
   }
-  const reasons = [
-    `all ${define.criteria.length} acceptance criteria met`,
-    `approved by ${ctx.runState.approval.by}`,
-  ];
+  // Unreconciled spec-drift BLOCKS ship (P0). When the build flagged a criterion whose
+  // DEFINE-stated value was wrong and implemented the CORRECT one, the shipped spec is
+  // still false until DEFINE is reconciled (`reconciled: true` on that build result).
+  // A green G_SHIP must never be recorded for a run whose own DEFINE its build
+  // contradicts. Reconciled corrections and no-drift pass through unchanged.
   const drift = specDrift(buildRes?.results ?? []);
   if (!drift.clean) {
-    reasons.push(
-      `⚠ ${drift.drifted.length} acceptance criterion/criteria were CORRECTED during build — reconcile DEFINE.md: ${drift.drifted
-        .map((d) => `${d.criterion} (${d.correction})`)
-        .join('; ')} — run: spin spec-drift --build <build-report.json>`
+    return block(
+      gate,
+      [
+        `${drift.drifted.length} acceptance criterion/criteria were CORRECTED during build but DEFINE.md is not reconciled — the shipped spec is still false: ${drift.drifted
+          .map((d) => `${d.criterion} (${d.correction})`)
+          .join('; ')}`,
+        'update DEFINE.md then set `reconciled: true` on each corrected build result — run `spin spec-drift --build <build-report.json>` for the detailed diff',
+      ],
+      drift.drifted.map((d) => `spec-drift:${d.criterion}`)
     );
   }
-  return pass(gate, reasons);
+  return pass(gate, [
+    `all ${define.criteria.length} acceptance criteria met`,
+    `approved by ${ctx.runState.approval.by}`,
+  ]);
 }
 
 function safeJson<T>(filePath: string): T | null {

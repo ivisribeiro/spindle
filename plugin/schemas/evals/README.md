@@ -27,13 +27,12 @@ Each case is a directory with a `case.json`:
 
 ## Coverage (honest, on the record)
 
-This corpus currently pins the **arg-file gates** — the logic-dense ones replayable from
-standalone fixtures: `G_AUDIT`, `G_OPS_CONFIG`, `G_PLAN`, `G_REVIEW_BLOCK`,
-`G_ROUTER_COVERAGE` (a pass **and** a block case each).
-
-The **state-coupled gates** — `G_DEFINE`, `G_DESIGN`, `G_BUILD`, `G_SHIP`,
-`G_KB_STRUCTURE`, `G_KB_COVERAGE` — are exercised pass-and-block by the end-to-end suite
-(`test/e2e/sdd-cycle.e2e.test.ts`, `test/e2e/kb-cycle.e2e.test.ts`) rather than by frozen
-`.spindle/` snapshots here. `spin eval` reports them as uncovered in its coverage block;
-`spin eval --strict` treats that as a failure. Bringing them into the corpus as recorded
-snapshots is the next increment.
+The corpus now pins **all 11 registry gates** with at least one pass **and** one block
+case each — the arg-file gates (`G_AUDIT`, `G_OPS_CONFIG`, `G_PLAN`, `G_REVIEW_BLOCK`,
+`G_ROUTER_COVERAGE`) as standalone fixtures, and the state-coupled gates (`G_DEFINE`,
+`G_DESIGN`, `G_BUILD`, `G_SHIP`, `G_KB_STRUCTURE`, `G_KB_COVERAGE`) as frozen `.spindle/`
+snapshot dirs, including the `G_SHIP` spec-drift pair (block on unreconciled,
+pass on reconciled). `spin eval --strict` fails if any registry gate ever loses its
+pass+block pair, so a new gate cannot ship without fixtures. The end-to-end suite
+(`test/e2e/sdd-cycle.e2e.test.ts`, `test/e2e/kb-cycle.e2e.test.ts`,
+`test/e2e/brownfield-cycle.e2e.test.ts`) exercises the same gates through the live CLI.

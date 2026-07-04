@@ -1,21 +1,21 @@
 {
   "agents": [
-    "arch-worker",
-    "build-worker",
-    "challenger",
-    "code-reviewer",
-    "codebase-explorer",
-    "define-worker",
-    "design-worker",
-    "equivalence-worker",
-    "factcheck-extract-worker",
-    "factcheck-verify-worker",
-    "kb-concept-worker",
-    "migrate-dbt-worker",
-    "migrate-spark-worker",
-    "schema-designer",
-    "security-worker",
-    "ship-worker",
-    "the-planner"
+    { "name": "arch-worker", "model": "sonnet", "kb_domains": [] },
+    { "name": "build-worker", "model": "sonnet", "kb_domains": ["spindle-harness"] },
+    { "name": "challenger", "model": "opus", "kb_domains": [] },
+    { "name": "code-reviewer", "model": "sonnet", "kb_domains": [] },
+    { "name": "codebase-explorer", "model": "sonnet", "kb_domains": ["spindle-harness"] },
+    { "name": "define-worker", "model": "opus", "kb_domains": ["spindle-harness"] },
+    { "name": "design-worker", "model": "opus", "kb_domains": ["spindle-harness"] },
+    { "name": "equivalence-worker", "model": "sonnet", "kb_domains": [] },
+    { "name": "factcheck-extract-worker", "model": "haiku", "kb_domains": [] },
+    { "name": "factcheck-verify-worker", "model": "sonnet", "kb_domains": [] },
+    { "name": "kb-concept-worker", "model": "sonnet", "kb_domains": [] },
+    { "name": "migrate-dbt-worker", "model": "sonnet", "kb_domains": [] },
+    { "name": "migrate-spark-worker", "model": "sonnet", "kb_domains": [] },
+    { "name": "schema-designer", "model": "sonnet", "kb_domains": [] },
+    { "name": "security-worker", "model": "sonnet", "kb_domains": [] },
+    { "name": "ship-worker", "model": "haiku", "kb_domains": ["spindle-harness"] },
+    { "name": "the-planner", "model": "opus", "kb_domains": ["spindle-harness"] }
   ]
 }

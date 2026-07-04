@@ -80,6 +80,8 @@ export const GATE_DOCS: Record<string, GateDoc> = {
     blocks_when: [
       'any acceptance criterion in DEFINE is not satisfied by the build results',
       'the build certifies a criterion DEFINE never declared (phantom/set-drift)',
+      'no human approval recorded via `spin approve`',
+      'an unreconciled spec-drift: a build result with corrected_spec:true not yet reconciled (unmet: spec-drift:<AC>)',
     ],
     flags: [],
   },

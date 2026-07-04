@@ -130,7 +130,7 @@ between `src/`+`schemas/` and `plugin/`.
 | `spin validate <id\|path>` | structural checks (md sections / manifest table / criteria IDs); exit 0/1 |
 | `spin gate <gateId> [--agents d] [--routing f] [--kb d] [--findings f]` | run a named gate; exit 0 pass / 1 BLOCK with `{gate,passed,reasons,unmet}`. `--kb` (default `plugin/kb`) backs G_ROUTER_COVERAGE's kb_domains referential check |
 | `spin diff-criteria --define f --build f` | set-diff DEFINE criteria vs BUILD passed -> `unmet[]` |
-| `spin handoff-check <schemaId> <file.json>` | standalone handoff validation |
+| `spin handoff-check <schemaId> <file.json>` | standalone handoff validation. Exit code is unaffected, but the JSON also carries an advisory `unknown_keys: [...]` (omitted when empty) naming top-level input keys the schema's non-strict object silently stripped — e.g. a typo like `files_writen` — with array-of-object fields (`results[]`/`findings[]`/`manifest[]`) reported one level deep as `field[i].key` |
 | `spin merge-findings <files...> [--out f]` | deterministically merge N finding files (dedup file+line+rule, keep higher severity, aggregate sources) into one `{findings,sources}` for `G_REVIEW_BLOCK` |
 | `spin kb-install <domain> [--from d] [--dest d]` | publish a complete flat KB domain from `.spindle/` into `plugin/kb/` (pure copy) so `kb_domains` resolves; exit 1 if the source is incomplete |
 | `spin retry <id> --inc \| --ok` | retry counter vs `config.build_retry_cap`; `--ok` exits 1 at ceiling |
@@ -155,7 +155,9 @@ between `src/`+`schemas/` and `plugin/`.
 /ship — every manifest file exists on disk + criteria-diff empty + BUILD_REPORT
 exists + no passed criterion's CI `verified_by_result` is `failed` + (when
 `config.require_verified_by`) every passed criterion cites a verifier; the spine
-READS the CI result, never runs the verifier), `G_SHIP` (define.criteria minus build.passed is empty AND a human approval is
+READS the CI result, never runs the verifier), `G_SHIP` (define.criteria minus build.passed is empty AND
+no unreconciled spec-drift remains — a build that CORRECTED a criterion blocks with a `spec-drift:<AC>`
+per affected criterion until DEFINE is reconciled (`reconciled: true`) AND a human approval is
 recorded via `spin approve` — the seam applied to sign-off: a model cannot approve), `G_KB_STRUCTURE`,
 `G_KB_COVERAGE` (every manifest concept authored + enough test cases; manifest shape
 is Zod-validated; E-1: a `needs_decoding` concept must carry a non-empty

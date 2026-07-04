@@ -3,5 +3,5 @@
   "gate": "G_ROUTER_COVERAGE",
   "expect": "block",
   "args": { "agents": "agents", "routing": "routing.json" },
-  "note": "an agent on disk is missing from the routing table — a silent-skip data-loss hole"
+  "note": "the routing entry's model (opus) drifts from the agent frontmatter's model (sonnet) — the rich-format semantic check blocks"
 }

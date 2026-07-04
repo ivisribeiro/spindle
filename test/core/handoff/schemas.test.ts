@@ -158,4 +158,37 @@ describe('handoff contracts', () => {
       checkHandoffObject('kb-concept', { concept: 'c', summary: 's', decoding_note: 123 }).ok
     ).toBe(false);
   });
+
+  // --- P2: unknown-key visibility (Zod non-strict objects silently STRIP unknown keys) ---
+
+  it('a clean handoff carries no unknown_keys field at all (omitted, not [])', () => {
+    const r = checkHandoffObject('define', { feature: 'auth', clarity: 0.9, criteria: ['AC-1'] });
+    expect(r.ok).toBe(true);
+    expect(r).not.toHaveProperty('unknown_keys');
+  });
+
+  it('a valid handoff with a typo\'d extra key still passes (exit-code unaffected) and names it', () => {
+    const r = checkHandoffObject('build-report', {
+      feature: 'auth',
+      results: [{ criterion: 'AC-1', status: 'passed' }],
+      files_writen: ['src/a.ts'], // typo of files_written
+    });
+    expect(r.ok).toBe(true); // advisory only — never blocks
+    expect(r.unknown_keys).toEqual(['files_writen']);
+  });
+
+  it('a nested array-item typo is reported with its index path', () => {
+    const r = checkHandoffObject('build-report', {
+      feature: 'auth',
+      results: [{ criterion: 'AC-1', status: 'passed', pased: true }], // "pased" is an extra typo'd key
+    });
+    expect(r.ok).toBe(true);
+    expect(r.unknown_keys).toEqual(['results[0].pased']);
+  });
+
+  it('does not surface unknown_keys when validation itself fails', () => {
+    const r = checkHandoffObject('define', { feature: 'auth', clarity: 0.9, criteria: [], bogus: true });
+    expect(r.ok).toBe(false);
+    expect(r).not.toHaveProperty('unknown_keys');
+  });
 });

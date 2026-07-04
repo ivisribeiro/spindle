@@ -1,0 +1,161 @@
+# Gate a project that USES spindle — copy this into your OWN repo at
+# .github/workflows/spindle-gates.yml
+#
+# What this does: re-runs two of spindle's deterministic checks against
+# `.spindle/` state YOUR repo has committed. It does NOT install the Claude
+# Code plugin, does NOT call a model, and does NOT advance any spindle run —
+# see docs/CI_RECIPE.md for the full doctrine (what has to be committed for
+# each check, what CI must never do, and the honest limits).
+#
+# --- Where does `dist/cli/index.js` come from? -----------------------------
+# Two different situations, two different answers:
+#
+#   1. Plugin install (interactive Claude Code sessions). Claude Code sets
+#      `${CLAUDE_PLUGIN_ROOT}` when it invokes a slash command, and the CLI
+#      lives at `${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js`. That env var is
+#      set by Claude Code itself — it does not exist on a bare GitHub Actions
+#      runner, which never launches Claude Code. Do not reference it here.
+#
+#   2. CI (this file). There is no Claude Code runtime, so the job needs its
+#      own copy of the CLI. This workflow checks out a PINNED tag/sha of the
+#      spindle repo as a sibling directory (`.spindle-cli/`) on every run and
+#      invokes `dist/cli/index.js` straight from that checkout. That's
+#      different from permanently VENDORING a copy into your own repo (i.e.
+#      committing dist/cli/index.js + schemas/ under your own version
+#      control, covered in docs/CI_RECIPE.md §(c) — `spin verify-self` only
+#      matters for that vendored case). The checkout approach here needs no
+#      npm install of spindle itself: `dist/cli/index.js` is a self-contained
+#      esbuild bundle with every dependency inlined, so `node dist/cli/index.js`
+#      works with zero `node_modules`.
+# -----------------------------------------------------------------------------
+
+name: spindle-gates
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  # Bump this deliberately when you want a newer spin CLI — CI should never
+  # silently pick up a moving target.
+  SPINDLE_REF: main # pin to a released tag once spindle cuts one, e.g. v0.2.0
+
+jobs:
+  # ---------------------------------------------------------------------
+  # (a) Structural checks: cheap, run on every PR regardless of phase.
+  #     `schema validate` needs .spindle/schema.yaml committed.
+  #     `handoff-check` needs only the sidecar file it's pointed at — it
+  #     never reads .spindle/run.json at all.
+  # ---------------------------------------------------------------------
+  schema-and-handoffs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Checkout spindle (pinned) for the spin CLI
+        uses: actions/checkout@v4
+        with:
+          repository: ivisribeiro/spindle
+          ref: ${{ env.SPINDLE_REF }}
+          path: .spindle-cli
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20 # spindle's engines field requires >=20.19; setup-node
+          # resolves "20" to the latest 20.x release, which satisfies that floor.
+
+      - name: spin schema validate
+        env:
+          SPIN_CLI: ${{ github.workspace }}/.spindle-cli/dist/cli/index.js
+        run: node "$SPIN_CLI" --root "$GITHUB_WORKSPACE" schema validate
+
+      - name: spin handoff-check (every committed sidecar)
+        env:
+          SPIN_CLI: ${{ github.workspace }}/.spindle-cli/dist/cli/index.js
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+
+          if [ ! -f .spindle/schema.yaml ]; then
+            echo "no .spindle/schema.yaml committed — nothing to check, skipping."
+            exit 0
+          fi
+
+          # The sidecar filename is the ARTIFACT id (.handoffs/build.json), but
+          # handoff-check wants the HANDOFF schema id declared on that artifact
+          # in schema.yaml (build-report for build, per schemas/sdd/schema.yaml).
+          # Ask spin itself for that mapping — never hardcode it, a forked
+          # schema can rename artifacts freely.
+          declare -A HANDOFF_FOR
+          while IFS=$'\t' read -r artifactId handoffId; do
+            HANDOFF_FOR["$artifactId"]="$handoffId"
+          done < <(node "$SPIN_CLI" --root "$GITHUB_WORKSPACE" schema show \
+                    | jq -r '.artifacts[] | select(.handoff) | [.id, .handoff] | @tsv')
+
+          status=0
+          for sidecar in .spindle/features/**/.handoffs/*.json; do
+            artifactId=$(basename "$sidecar" .json)
+            handoffId="${HANDOFF_FOR[$artifactId]:-}"
+            if [ -z "$handoffId" ]; then
+              echo "::warning file=$sidecar::no handoff id declared for artifact '$artifactId' — skipping"
+              continue
+            fi
+            echo "spin handoff-check $handoffId $sidecar"
+            node "$SPIN_CLI" handoff-check "$handoffId" "$sidecar" || status=1
+          done
+          exit $status
+
+  # ---------------------------------------------------------------------
+  # (b) G_BUILD on feature branches — the seam applied to merges. Needs the
+  #     FULL .spindle/ tree for the feature committed: run.json, schema.yaml,
+  #     features/<feature>/.handoffs/{define,design,build}.json, and
+  #     BUILD_REPORT.md. It also cross-checks the design manifest against
+  #     your real working tree, so your actual source files must be present
+  #     too (they will be — this is just your repo checked out normally).
+  # ---------------------------------------------------------------------
+  gate-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Checkout spindle (pinned) for the spin CLI
+        uses: actions/checkout@v4
+        with:
+          repository: ivisribeiro/spindle
+          ref: ${{ env.SPINDLE_REF }}
+          path: .spindle-cli
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Skip gracefully if no run state is committed yet
+        id: has-state
+        run: |
+          if [ -f ".spindle/run.json" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "no .spindle/run.json committed — this feature hasn't reached a" \
+                 "gated phase yet, or this project doesn't commit .spindle/. Skipping."
+          fi
+
+      - name: spin gate G_BUILD
+        if: steps.has-state.outputs.present == 'true'
+        env:
+          SPIN_CLI: ${{ github.workspace }}/.spindle-cli/dist/cli/index.js
+        # Exit 1 here fails the job — a PR cannot merge a feature spindle
+        # itself considers unbuilt. Read the printed {reasons, unmet} in the
+        # job log; don't re-run hoping it passes.
+        run: node "$SPIN_CLI" --root "$GITHUB_WORKSPACE" gate G_BUILD
+
+      # G_SHIP is deliberately NOT gated here: its human-approval requirement
+      # can only be RECORDED by `spin approve` on an interactive TTY (CLAUDE.md
+      # §4) — a CI runner has none, so it can never grant approval on your
+      # behalf. Gating G_SHIP in CI can only ever verify an approval a human
+      # already recorded and committed locally before pushing. See
+      # docs/CI_RECIPE.md §(b) for the full reasoning.

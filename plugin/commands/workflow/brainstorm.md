@@ -96,21 +96,20 @@ Then write the handoff sidecar <feature_dir>/.handoffs/brainstorm.json:
 
 (Using schema id "define" — the brainstorm output feeds directly into /define.)
 
-Do NOT call any spin CLI commands yourself. The orchestrating command will call
-`spin complete brainstorm --handoff <sidecar>` after you finish.
+Do NOT call any spin CLI commands yourself. The orchestrating command will
+validate this handoff and then call `spin complete brainstorm` (the
+`brainstorm` artifact declares no `handoff:` schema, so `--handoff` is never
+passed to `spin complete` for it — see the Notes section) after you finish.
 ```
 
-## Step 4 — mark complete (no gate)
+## Step 4 — validate the handoff, then mark complete (no gate)
 
-After the worker Task returns, call:
+After the worker Task returns, validate the sidecar against the `define`
+schema it was authored against:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js complete brainstorm \
-  --handoff .spindle/features/<slug>/.handoffs/brainstorm.json
+node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js handoff-check define .spindle/features/<slug>/.handoffs/brainstorm.json
 ```
-
-**Exit 0** — brainstorm is marked complete. No gate runs after this phase
-(brainstorm is optional/exploratory). Proceed to Step 5.
 
 **Exit 1** — the handoff JSON is invalid against the `define` schema. Retry:
 
@@ -128,6 +127,18 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js retry brainstorm --inc
 ```
 
 Re-dispatch the worker with the validation-error text appended to the prompt.
+
+**Exit 0** — the handoff is well-formed. Mark the artifact complete. The
+`brainstorm` artifact declares no `handoff:` field in `schema.yaml`, so do
+**not** pass `--handoff` here — `spin complete` rejects `--handoff` on a
+handoff-less artifact with a usage error:
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js complete brainstorm
+```
+
+**Exit 0** — brainstorm is marked complete. No gate runs after this phase
+(brainstorm is optional/exploratory). Proceed to Step 5.
 
 ## Step 5 — recommend next
 
