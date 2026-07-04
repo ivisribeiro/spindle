@@ -212,15 +212,21 @@ spin gate G_DESIGN
 
 ### 5. Build
 
-Run `/build`. The command loops over `spin next`, fanning out independent artifacts in the same `parallel_group` in a single Task dispatch. Each worker writes its artifact + a `build-task` handoff. For each:
+Run `/build`. The command loops over `spin next`, fanning out one worker per manifest file in the same `parallel_group` in a single Task dispatch. Each worker writes its file + a `build-task` handoff, validated independently:
 
 ```bash
-spin complete <id> --handoff .spindle/features/<feature>/.handoffs/<id>.json
-# exit 1 → spin retry <id> --inc  (bounded by build_retry_cap)
-# at ceiling → spin retry <id> --ok  exits 1, command surfaces the block
+spin handoff-check build-task .spindle/features/<feature>/.handoffs/<file-id>.json   # per worker
 ```
 
-When all artifacts complete, `spin gate G_BUILD` must pass before `/ship` is allowed.
+Then the orchestrator records ONE aggregate `build` completion and gates it (`build` is the only build-phase artifact id — `spin complete <per-file-id>` would exit 2):
+
+```bash
+spin complete build --handoff .spindle/features/<feature>/.handoffs/build.json
+# exit 1 → spin retry build --inc  (bounded by build_retry_cap)
+# at ceiling → spin retry build --ok  exits 1, command surfaces the block
+```
+
+When `build` completes, `spin gate G_BUILD` must pass before `/ship` is allowed.
 
 ### 6. Ship
 
@@ -361,11 +367,10 @@ For an existing codebase, the spine starts from an **audit** — structured evid
         ├── DEFINE.md
         ├── DESIGN.md
         ├── BUILD_REPORT.md
-        └── .handoffs/
-            ├── brainstorm.json
-            ├── define.json
+        └── .handoffs/            # canonical sidecars, written by `spin complete --handoff`
+            ├── define.json        #   (brainstorm has no handoff — no file)
             ├── design.json
-            └── build-report.json
+            └── build.json         #   keyed by artifact id `build`, not the schema id
 ```
 
 ---
