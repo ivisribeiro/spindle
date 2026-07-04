@@ -1,8 +1,32 @@
 import type { Artifact, SchemaYaml, CompletedSet, BlockedArtifacts } from './types.js';
 import { loadSchema, parseSchema } from './schema.js';
+import { gatesBeforeArtifact, terminalGates } from './gate-hooks.js';
 
 // Ported verbatim from OpenSpec (MIT). Deterministic Kahn topological sort,
 // ready-set and blocked-set queries over the artifact dependency graph.
+
+/** Raised by `getBuildOrder()` when Kahn's algorithm cannot emit every artifact — the
+ *  unmistakable signature of a dependency cycle (a node whose in-degree never reaches
+ *  zero). `schema.ts`'s `parseSchema` already runs its own DFS cycle check on every
+ *  YAML-loaded schema, so this normally never fires on that path — but `ArtifactGraph`
+ *  is also constructible via `fromSchema()` from an already-parsed `SchemaYaml` that
+ *  skipped that check. `getBuildOrder()` must be self-defending regardless of entry
+ *  point: it either returns the full order or throws, and NEVER silently returns a
+ *  truncated one. */
+export class ArtifactCycleError extends Error {
+  /** Artifact ids that never reached zero in-degree — each is on a cycle, or
+   *  transitively depends on one. Sorted for determinism. */
+  readonly cycle: string[];
+
+  constructor(cycle: string[]) {
+    const sorted = [...cycle].sort();
+    super(
+      `Cyclic dependency detected in artifact graph: ${sorted.join(', ')} form (or depend on) a cycle`
+    );
+    this.name = 'ArtifactCycleError';
+    this.cycle = sorted;
+  }
+}
 
 export class ArtifactGraph {
   private artifacts: Map<string, Artifact>;
@@ -82,6 +106,16 @@ export class ArtifactGraph {
       queue.push(...newlyReady.sort());
     }
 
+    // Kahn's algorithm emits a node only once its in-degree reaches zero. If the queue
+    // drains before every artifact is emitted, whatever remains has a non-zero in-degree
+    // forever — it is on a cycle, or depends (directly or transitively) on one. Name
+    // those artifacts rather than silently handing back a truncated order.
+    if (result.length < this.artifacts.size) {
+      const emitted = new Set(result);
+      const remaining = [...this.artifacts.keys()].filter((id) => !emitted.has(id));
+      throw new ArtifactCycleError(remaining);
+    }
+
     return result;
   }
 
@@ -121,9 +155,25 @@ export class ArtifactGraph {
    *  Empty when the schema declares none. Makes the lifecycle gate map enforceable
    *  instead of prose-only. */
   getRequiredGatesBefore(artifactId: string): string[] {
-    const entry = this.schema.gates?.[`before_${artifactId}`];
-    if (!entry) return [];
-    return Array.isArray(entry) ? entry : [entry];
+    return gatesBeforeArtifact(this.schema, artifactId);
+  }
+
+  /** Gate ids anchored to the run's TERMINAL checkpoint — the `during` + `before_complete`
+   *  hooks. They must be recorded green before the final artifact completes and before the
+   *  run may be reported complete. Empty when the schema declares neither. This is what
+   *  makes those hooks enforceable instead of prose-only (kb/brownfield used to rely on a
+   *  command remembering to call them). */
+  getTerminalGates(): string[] {
+    return terminalGates(this.schema);
+  }
+
+  /** The last artifact in Kahn build order — the run's completion sink. Terminal gates are
+   *  enforced against this one's completion. Null only for an empty graph (schema forbids).
+   *  Propagates `ArtifactCycleError` (does not catch it) if the graph is cyclic — a
+   *  terminal-gate check must never treat a cycle as "no final artifact". */
+  getFinalArtifactId(): string | null {
+    const order = this.getBuildOrder();
+    return order.length > 0 ? order[order.length - 1] : null;
   }
 
   isComplete(completed: CompletedSet): boolean {

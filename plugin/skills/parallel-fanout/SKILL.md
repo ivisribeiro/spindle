@@ -58,6 +58,29 @@ boundary (the same way it runs `spin complete` for every sibling). A failed
 `spin complete` (exit 1) still triggers that artifact's retry loop; `fanout-check` is
 the deterministic backstop proving no sibling silently vanished.
 
+**The ledger mode's blind spot — and the file-level mode that closes it.** Ledger
+mode only sees `parallel_group` members that are LEDGER artifacts. When the fan-out
+happens below ledger granularity — the SDD build phase is ONE ledger artifact
+(`build`), but /build dispatches one worker per design-manifest file — the group has
+a single member and a dropped per-file worker is invisible: its `build-task` sidecar
+simply never exists, so there is nothing for `spin handoff-check` to fail. The
+`--manifest` mode compares the design handoff's `manifest[]` against the per-file
+`build-task` sidecars on disk (joined on each sidecar's `file` field):
+
+```bash
+spin fanout-check --manifest .spindle/features/<feature>/.handoffs/design.json [--handoffs <dir>]
+# exit 0: every manifest file has a build-task sidecar
+# exit 1: partial fan-out — `missing[]` holds the full manifest entries with no
+#         sidecar, i.e. the exact re-dispatch list
+# exit 2: malformed manifest / nonexistent handoffs dir (a bug in the invocation)
+```
+
+`--handoffs` defaults to the active feature's `.handoffs/`. This is accounting plus
+a verdict, never reassignment: the CLI names the dropped units; the orchestrating
+command re-dispatches ONLY those via Task (bounded by `spin retry`), then re-runs
+the check. /build runs this after all per-file workers return and before
+aggregating the build-report.
+
 ---
 
 ## Lane Matrix
@@ -222,6 +245,7 @@ spin diff-criteria --define .spindle/features/my-feature/DEFINE.md \
 |---|---|---|
 | Dispatching parallel siblings sequentially | Wastes wall time; misrepresents the concurrency model | Fan out all same-`parallel_group` artifacts in ONE message |
 | Calling `spin gate` before all siblings reach a terminal state | Gate sees partial work | Run `spin fanout-check` (exit 1 on a dropped sibling) before gating, after every `spin complete` / retry-ceiling |
+| Aggregating the build-report while a per-file worker is missing | Ledger mode cannot see sub-ledger fan-out — the hole ships silently | Run `spin fanout-check --manifest <design.json>` first; re-dispatch exactly `missing[]`, bounded by `spin retry` |
 | `spin complete <id>` without `--handoff` | Skips schema validation; G_HANDOFF will block | Always pass `--handoff <sidecar>` when the artifact declares a `handoff` schema |
 | Advancing to the next phase without calling `spin gate` | Skips the deterministic checkpoint; may ship invalid artifacts | Gate every phase boundary; branch strictly on exit code |
 | Retrying without `spin retry --ok` | Infinite loop on permanent failures | Use `--inc` / `--ok` against `build_retry_cap` |

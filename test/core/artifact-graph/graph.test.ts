@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { ArtifactGraph } from '../../../src/core/artifact-graph/graph.js';
+import { ArtifactGraph, ArtifactCycleError } from '../../../src/core/artifact-graph/graph.js';
 import { parseSchema, SchemaValidationError } from '../../../src/core/artifact-graph/schema.js';
+import type { SchemaYaml } from '../../../src/core/artifact-graph/types.js';
 
 const SDD_YAML = `
 name: sdd
@@ -112,5 +113,53 @@ artifacts:
     generates: a2.md
 `)
     ).toThrow(SchemaValidationError);
+  });
+});
+
+describe('ArtifactGraph cycle detection (Kahn self-defense)', () => {
+  // parseSchema's DFS rejects cycles at YAML load, so a cyclic graph can only be built
+  // through fromSchema() (already-parsed SchemaYaml). getBuildOrder must throw a typed
+  // error naming the cycle members — never silently return a truncated order.
+  const cyclicSchema = (): SchemaYaml =>
+    ({
+      name: 'cyclic',
+      version: 1,
+      artifacts: [
+        { id: 'root', generates: 'root.md', description: '', requires: [] },
+        { id: 'a', generates: 'a.md', description: '', requires: ['b', 'root'] },
+        { id: 'b', generates: 'b.md', description: '', requires: ['a'] },
+        { id: 'tail', generates: 'tail.md', description: '', requires: ['b'] },
+      ],
+    }) as SchemaYaml;
+
+  it('getBuildOrder throws ArtifactCycleError instead of returning a truncated order', () => {
+    const g = ArtifactGraph.fromSchema(cyclicSchema());
+    expect(() => g.getBuildOrder()).toThrow(ArtifactCycleError);
+  });
+
+  it('the error names the artifacts stuck on (or downstream of) the cycle', () => {
+    const g = ArtifactGraph.fromSchema(cyclicSchema());
+    try {
+      g.getBuildOrder();
+      expect.unreachable('getBuildOrder must throw on a cyclic graph');
+    } catch (e) {
+      const err = e as ArtifactCycleError;
+      expect(err).toBeInstanceOf(ArtifactCycleError);
+      // 'root' was emitted; a<->b form the cycle and tail depends on it.
+      expect(err.cycle).toEqual(['a', 'b', 'tail']);
+      expect(err.message).toContain('Cyclic dependency');
+      expect(err.message).toContain('a');
+      expect(err.message).toContain('b');
+    }
+  });
+
+  it('getFinalArtifactId propagates the cycle error (terminal-gate path stays sane)', () => {
+    const g = ArtifactGraph.fromSchema(cyclicSchema());
+    expect(() => g.getFinalArtifactId()).toThrow(ArtifactCycleError);
+  });
+
+  it('an acyclic graph still returns the full order (no false positives)', () => {
+    const g = ArtifactGraph.fromYamlContent(SDD_YAML);
+    expect(g.getBuildOrder()).toHaveLength(4);
   });
 });
