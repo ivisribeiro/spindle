@@ -47,6 +47,11 @@ export const ConfigBlock = z
     // a `verified_by` (a test/check). UNSET by default (additive). The spine reads the
     // CI-produced `verified_by_result`; it never runs the verifier.
     require_verified_by: z.boolean().optional(),
+    // Optional ceiling read by `spin budget --enforce` when no `--max-tokens` flag is
+    // given. UNSET by default — absent means no ceiling (enforcement then requires the
+    // flag, or is a usage error). Purely a fallback source; never consulted in advisory
+    // (non-`--enforce`) mode.
+    max_tokens: z.number().int().positive().optional(),
   })
   .partial()
   .optional();

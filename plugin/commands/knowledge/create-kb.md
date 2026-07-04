@@ -27,6 +27,11 @@ Initialize the kb schema and run ledger for this domain:
 spin init --schema kb --feature <domain>
 ```
 
+**Exit 1 — active-run conflict:** `spin init` refuses to clobber a run that already
+has recorded progress (one active run per checkout). Surface the `reason` (names the
+active schema + feature) to the human and STOP. Do **not** pass `--force`
+autonomously — overwriting an in-progress run is a human decision.
+
 This copies the editable kb schema into `.spindle/schema.yaml` and creates
 `.spindle/run.json`. Confirm the active graph before driving it:
 

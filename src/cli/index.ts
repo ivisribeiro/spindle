@@ -2,6 +2,8 @@ import { Command } from 'commander';
 import { fileURLToPath } from 'node:url';
 import { realpathSync } from 'node:fs';
 import { RunStateError } from '../core/run/run-state.js';
+import { SchemaValidationError } from '../core/artifact-graph/schema.js';
+import { ArtifactCycleError } from '../core/artifact-graph/graph.js';
 import {
   initHandler,
   stateHandler,
@@ -29,6 +31,8 @@ import {
   evalHandler,
   approveHandler,
   invalidateHandler,
+  doctorHandler,
+  verifySelfHandler,
   type HandlerResult,
 } from '../commands/handlers.js';
 
@@ -63,6 +67,10 @@ export async function runCli(
     .command('init')
     .option('--schema <name>', 'workflow schema (sdd | kb)', 'sdd')
     .option('--feature <slug>', 'feature slug', 'feature')
+    .option(
+      '--force',
+      'overwrite an in-progress run anyway (one active run per checkout; a human decision — never pass this autonomously)'
+    )
     .action(function (this: Command, opts) {
       emit(initHandler(root(this), opts));
     });
@@ -88,24 +96,43 @@ export async function runCli(
 
   program
     .command('trace')
-    .description('print the recorded run-ledger timeline + a tier/token summary (pure read, exit 0)')
-    .action(function (this: Command) {
-      emit(traceHandler(root(this)));
+    .description(
+      'print the recorded run-ledger timeline + a tier/token summary (pure read, exit 0). --verify walks the events[] hash chain: exit 0 intact (adds chain:{verified,legacy}), exit 1 naming the first broken link'
+    )
+    .option('--verify', 'verify the events[] tamper-evident hash chain')
+    .action(function (this: Command, opts) {
+      emit(traceHandler(root(this), opts));
     });
 
   program
     .command('budget')
-    .description('reconcile reported token spend per tier against an optional ceiling (advisory; always exit 0)')
-    .option('--max-tokens <n>', 'advisory ceiling; sets over_budget when reported spend exceeds it')
+    .description(
+      'reconcile reported token spend per tier against an optional ceiling. Advisory by default (always exit 0); --enforce opts into exit 1 on overage'
+    )
+    .option('--max-tokens <n>', 'ceiling; sets over_budget when reported spend exceeds it')
+    .option(
+      '--enforce',
+      'exit 1 when reported spend exceeds the ceiling (--max-tokens, else config.max_tokens); exit 2 if no ceiling is available'
+    )
     .action(function (this: Command, opts) {
       emit(budgetHandler(root(this), opts));
     });
 
   program
     .command('fanout-check')
-    .description('assert no parallel_group is partially complete (a dropped fan-out worker); exit 0 all-consistent / 1 partial')
-    .action(function (this: Command) {
-      emit(fanoutCheckHandler(root(this)));
+    .description(
+      'assert no parallel_group is partially complete (a dropped fan-out worker); exit 0 all-consistent / 1 partial. With --manifest: file-level mode — compare the design manifest against per-file build-task sidecars and list missing[] for re-dispatch'
+    )
+    .option(
+      '--manifest <file>',
+      'design handoff JSON whose manifest[] enumerates the fan-out units (enables file-level mode)'
+    )
+    .option(
+      '--handoffs <dir>',
+      "directory holding the per-file build-task sidecars (default: the active feature's .handoffs/)"
+    )
+    .action(function (this: Command, opts) {
+      emit(fanoutCheckHandler(root(this), opts));
     });
 
   program
@@ -188,10 +215,14 @@ export async function runCli(
     });
 
   program
-    .command('route <taskKind>')
+    .command('route [taskKind]')
+    .description(
+      'resolve a task-kind to a model tier {tier,model,reason}. With no taskKind, --stats reports advisory per-tier completion/token accounting + per-artifact retry counts from the run ledger (always exit 0 once a run exists)'
+    )
     .option('--budget <level>', 'std | low', 'std')
+    .option('--stats', 'advisory routing accounting from the run ledger (used without taskKind)')
     .action(function (this: Command, taskKind, opts) {
-      emit(routeHandler(taskKind, opts));
+      emit(routeHandler(root(this), taskKind, opts));
     });
 
   program
@@ -277,6 +308,28 @@ export async function runCli(
       emit(configDriftHandler(opts));
     });
 
+  // --- spin doctor / spin verify-self: orientation + build-integrity diagnostics.
+  // Kept as their own region so they never collide with edits to the commands above.
+
+  program
+    .command('doctor')
+    .description(
+      'read-only orientation + environment diagnosis: node version, active run, schema validity, and the exact next slash command. Always exit 0 unless the check itself crashes (3)'
+    )
+    .action(function (this: Command) {
+      emit(doctorHandler(root(this)));
+    });
+
+  program
+    .command('verify-self')
+    .description(
+      'recompute sha256 over dist/cli/index.js, plugin/dist/cli/index.js, and schemas/**+plugin/schemas/**, compare against verification/checksums.json; exit 1 lists mismatched/missing, exit 2 if the manifest is absent'
+    )
+    .option('--manifest <file>', 'checksum manifest (default: verification/checksums.json under --root)')
+    .action(function (this: Command, opts) {
+      emit(verifySelfHandler(root(this), opts));
+    });
+
   try {
     await program.parseAsync(argv);
   } catch (err) {
@@ -284,6 +337,14 @@ export async function runCli(
     // A corrupt/invalid ledger on disk is an INTERNAL failure (exit 3), not a usage
     // error. A missing ledger and ordinary bad-invocation errors stay usage (exit 2).
     if (err instanceof RunStateError && (err.kind === 'corrupt' || err.kind === 'invalid')) return 3;
+    // Same precedent for the active workflow schema: `spin init`/`spin schema validate`
+    // already validated it once (including the DFS/Kahn cycle checks), so a
+    // SchemaValidationError or ArtifactCycleError surfacing while some OTHER command
+    // (next/order/complete/...) loads it as supporting state means the on-disk copy went
+    // bad after the fact — an internal/corrupt-state failure, not a bad invocation.
+    // `schemaHandler`'s own `validate` action catches both locally and reports them as a
+    // normal exit-1 domain block instead, so this branch never double-handles that path.
+    if (err instanceof SchemaValidationError || err instanceof ArtifactCycleError) return 3;
     return 2;
   }
   return exitCode;

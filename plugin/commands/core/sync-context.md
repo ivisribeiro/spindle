@@ -44,6 +44,13 @@ spin init --schema sdd --feature sync-context
 (The schema contents are not used; `spin init` creates `.spindle/run.json` which
 `spin retry` requires to persist counts.)
 
+**Exit 1 — active-run conflict:** if a real feature run is already in progress
+(one active run per checkout), `spin init` refuses rather than silently clobbering
+it. Surface the `reason` (names the active schema + feature) to the human and
+STOP `/sync-context` here — do **not** pass `--force` autonomously. Overwriting
+someone's in-progress run to make room for this command's throwaway ledger is a
+human call, not the agent's.
+
 ---
 
 ## Step 1 — Parse CLAUDE.md into sections
