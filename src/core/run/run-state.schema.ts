@@ -28,17 +28,39 @@ export type Usage = z.infer<typeof Usage>;
 // the current-state maps (completed[]/retries{}/gates{}). A build that blocked
 // G_BUILD twice then passed leaves three gate events; the gates{} map only holds
 // the latest. Written ONLY at the CLI's existing mutation points.
+//
+// `hash` (optional on every variant) is the tamper-EVIDENT chain link added by
+// src/core/run/event-chain.ts's `hashNewEvent`: every event appended from that
+// module onward carries it. It is `.optional()` so pre-existing run.json files
+// (written before this feature shipped) keep validating — their events simply
+// have no `hash` and are treated as a legacy prefix that predates the chain. See
+// event-chain.ts for the canonical form and chain-verification semantics, and
+// STATUS.md for the honest limit (only events[] is chained; the state maps are
+// still plain, forgeable JSON).
 export const RunEvent = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('complete'), at: z.string(), id: z.string(), usage: Usage.optional() }),
+  z.object({
+    kind: z.literal('complete'),
+    at: z.string(),
+    id: z.string(),
+    usage: Usage.optional(),
+    hash: z.string().optional(),
+  }),
   z.object({
     kind: z.literal('gate'),
     at: z.string(),
     gate: z.string(),
     passed: z.boolean(),
     reasons: z.array(z.string()).default([]),
+    hash: z.string().optional(),
   }),
-  z.object({ kind: z.literal('retry'), at: z.string(), id: z.string(), attempt: z.number().int().nonnegative() }),
-  z.object({ kind: z.literal('approve'), at: z.string(), by: z.string() }),
+  z.object({
+    kind: z.literal('retry'),
+    at: z.string(),
+    id: z.string(),
+    attempt: z.number().int().nonnegative(),
+    hash: z.string().optional(),
+  }),
+  z.object({ kind: z.literal('approve'), at: z.string(), by: z.string(), hash: z.string().optional() }),
 ]);
 export type RunEvent = z.infer<typeof RunEvent>;
 

@@ -1,6 +1,6 @@
 # Spindle Commands
 
-**28 slash commands** for the SDD workflow, knowledge base, review, visualization, and developer productivity.
+**30 slash commands** for the SDD workflow, knowledge base, review, visualization, and developer productivity.
 
 ## Workflow Commands (7)
 
@@ -37,19 +37,21 @@
 | `/memory` | Save session insights |
 | `/readme-maker` | Generate README |
 
-## Knowledge Commands (2)
+## Knowledge Commands (3)
 
 | Command | Description |
 |---------|-------------|
 | `/create-kb` | Generate a new KB domain (gated) |
 | `/update-kb` | Update/extend an existing KB domain |
+| `/create-specialist` | Generate a specialist agent with its KB bound in the same pass |
 
-## Review Commands (2)
+## Review Commands (3)
 
 | Command | Description |
 |---------|-------------|
 | `/review` | Dual-AI code review (CodeRabbit + Claude) |
 | `/judge` | Cross-model second opinion via OpenRouter (V0) |
+| `/codex-review` | Native cross-vendor review using the OpenAI Codex CLI |
 
 ## Visual Explainer Commands (8)
 

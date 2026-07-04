@@ -2,8 +2,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ArtifactGraph } from '../core/artifact-graph/graph.js';
-import { loadSchema, parseSchema } from '../core/artifact-graph/schema.js';
+import { loadSchema } from '../core/artifact-graph/schema.js';
+import { validateSchemaContent } from '../core/artifact-graph/schema-validate.js';
 import { detectCompleted } from '../core/artifact-graph/state.js';
+import { artifactOutputExists } from '../core/artifact-graph/outputs.js';
 import {
   initRunState,
   loadRunState,
@@ -28,15 +30,23 @@ import { criteriaDiff } from '../core/validation/criteria-diff.js';
 import { validateSections, hasManifestTable, extractCriteriaIds } from '../core/validation/md-section-validator.js';
 import { route, listTaskKinds, type Budget } from '../core/model-route/policy.js';
 import { classifyTier, type TierSignals, type Risk, type Breadth } from '../core/model-route/tiers.js';
+import { aggregateUsageStats } from '../core/model-route/usage-stats.js';
+import { verifyEventChain } from '../core/run/event-chain.js';
 import { reconcileAudit } from '../core/reconcile.js';
 import { configDrift } from '../core/config-drift.js';
 import { explainGate } from '../core/gates/gate-docs.js';
 import { listGates, isGateId } from '../core/gates/registry.js';
-import { isHandoffId } from '../core/handoff/schemas.js';
+import { DesignHandoff } from '../core/handoff/schemas.js';
+import {
+  compareManifestToSidecars,
+  readBuildTaskSidecarRefs,
+} from '../core/fanout/file-fanout.js';
 import { describeHandoff, listHandoffIds } from '../core/handoff/describe.js';
 import { isSafeSlug } from '../core/util/paths.js';
 import { specDrift, type BuildResult } from '../core/spec-drift.js';
 import { runEvalCorpus } from '../core/eval/eval.js';
+import { runDoctor } from '../core/doctor/doctor.js';
+import { verifySelf } from '../core/verify-self.js';
 
 // Each handler returns a HandlerResult; the CLI prints `json` and exits `code`.
 // Exit-code ABI: 0 pass · 1 gate-blocked/invalid · 2 usage · 3 internal.
@@ -71,7 +81,22 @@ function activeGraph(root: string): ArtifactGraph {
 
 /** Completion = run-state ledger UNION filesystem detection (crash-safe). */
 
-export function initHandler(root: string, opts: { schema?: string; feature?: string }): HandlerResult {
+/** True when the existing ledger has recorded any actual work — completions, gate
+ *  verdicts, ledger events, or a human approval. A run that was merely `spin init`'d
+ *  (a fresh, empty ledger) is "pristine" and safe to re-init without --force. */
+function runHasProgress(state: import('../core/run/run-state.schema.js').RunState): boolean {
+  return (
+    state.completed.length > 0 ||
+    state.events.length > 0 ||
+    Object.keys(state.gates).length > 0 ||
+    state.approval !== null
+  );
+}
+
+export function initHandler(
+  root: string,
+  opts: { schema?: string; feature?: string; force?: boolean }
+): HandlerResult {
   const schemaName = opts.schema ?? 'sdd';
   const feature = opts.feature ?? 'feature';
   // The feature slug becomes a directory name and a trusted run-state value — reject
@@ -83,6 +108,30 @@ export function initHandler(root: string, opts: { schema?: string; feature?: str
   if (!fs.existsSync(src)) {
     return usage(`unknown bundled schema "${schemaName}" (expected schemas/${schemaName}/schema.yaml)`);
   }
+
+  // One active run per checkout (§8 doctrine): refuse to silently clobber a run that
+  // has actual progress recorded. `--force` is the only way past this, and it is a
+  // human decision — a command must never pass it autonomously (see plugin/commands
+  // notes on the /audit, /sync-context, /create-kb init steps).
+  if (!opts.force && runStateExists(root)) {
+    const existing = loadRunState(root);
+    if (runHasProgress(existing)) {
+      return blocked({
+        initialized: false,
+        reason:
+          `an in-progress run already exists — schema "${existing.schema}", feature "${existing.feature}" ` +
+          `(completed=${existing.completed.length}, events=${existing.events.length}, ` +
+          `gates=${Object.keys(existing.gates).length}, approved=${existing.approval !== null}). ` +
+          `Refusing to clobber it.`,
+        active: { schema: existing.schema, feature: existing.feature },
+        escape_hatch:
+          'pass --force to overwrite the active run anyway — this is a human decision; ' +
+          'an automated agent must not pass --force on its own',
+      });
+    }
+    // Pristine run (initialized, zero progress) — safe to re-init freely, no --force needed.
+  }
+
   // Validate the bundled schema before copying.
   try {
     loadSchema(src);
@@ -93,7 +142,7 @@ export function initHandler(root: string, opts: { schema?: string; feature?: str
   fs.mkdirSync(handoffDir(root, feature), { recursive: true });
   fs.copyFileSync(src, schemaCopyPath(root));
   const state = initRunState(root, schemaName, feature);
-  return ok({ initialized: true, schema: schemaName, feature, runState: state });
+  return ok({ initialized: true, schema: schemaName, feature, runState: state, forced: opts.force === true });
 }
 
 export function stateHandler(root: string): HandlerResult {
@@ -101,7 +150,7 @@ export function stateHandler(root: string): HandlerResult {
   return ok(loadRunState(root));
 }
 
-export function traceHandler(root: string): HandlerResult {
+export function traceHandler(root: string, opts: { verify?: boolean } = {}): HandlerResult {
   if (!runStateExists(root)) return usage('no run state — run "spin init" first');
   const state = loadRunState(root);
   const events = state.events;
@@ -132,7 +181,7 @@ export function traceHandler(root: string): HandlerResult {
     }
   }
 
-  return ok({
+  const base = {
     feature: state.feature,
     schema: state.schema,
     events,
@@ -149,16 +198,40 @@ export function traceHandler(root: string): HandlerResult {
       // CLI cannot derive these itself.
       reported_tokens: anyTokensReported ? { tokens_in: tokensIn, tokens_out: tokensOut } : null,
     },
+  };
+
+  // Plain `spin trace` stays a pure read (exit 0, no `chain` key) — unchanged from
+  // before this feature. `--verify` additionally walks the events[] hash chain
+  // (event-chain.ts): exit 0 with `{chain:{verified,legacy}}` when intact, exit 1
+  // naming the first broken link when a hashed event's content (or an earlier
+  // link) was altered out of band.
+  if (!opts.verify) return ok(base);
+
+  const verification = verifyEventChain(events);
+  if (verification.ok) {
+    return ok({ ...base, chain: { verified: verification.verified, legacy: verification.legacy } });
+  }
+  return blocked({
+    ...base,
+    chain: {
+      verified: verification.verified,
+      legacy: verification.legacy,
+      broken_at: verification.brokenAt,
+      reason: verification.reason,
+    },
   });
 }
 
-export function budgetHandler(root: string, opts: { maxTokens?: string }): HandlerResult {
+export function budgetHandler(
+  root: string,
+  opts: { maxTokens?: string; enforce?: boolean }
+): HandlerResult {
   if (!runStateExists(root)) return usage('no run state — run "spin init" first');
-  let max: number | null = null;
+  let flagMax: number | null = null;
   if (opts.maxTokens !== undefined) {
     const n = Number(opts.maxTokens);
     if (!Number.isFinite(n) || n < 0) return usage('--max-tokens must be a non-negative number');
-    max = Math.floor(n);
+    flagMax = Math.floor(n);
   }
 
   const state = loadRunState(root);
@@ -168,7 +241,8 @@ export function budgetHandler(root: string, opts: { maxTokens?: string }): Handl
 
   // Reconcile reported spend per tier. The CLI only SUMS numbers the model handed it
   // on the handoff sidecar — it never tokenizes, estimates, or prices. This is
-  // accounting, not enforcement: it cannot independently verify a self-reported count.
+  // accounting, not enforcement (unless --enforce opts in below): it cannot
+  // independently verify a self-reported count.
   const byTier: Record<string, { completions: number; tokens_in: number; tokens_out: number }> = {};
   let tokensIn = 0;
   let tokensOut = 0;
@@ -189,25 +263,123 @@ export function budgetHandler(root: string, opts: { maxTokens?: string }): Handl
     }
   }
   const total = tokensIn + tokensOut;
-  const overBudget = max != null && anyReported && total > max;
 
-  // ADVISORY by design: always exit 0. A genuinely T2 task SHOULD cost a lot; budget
-  // accounting must never block legitimate spend. The signal is the `over_budget`
-  // flag + warning, not an exit code.
-  return ok({
+  if (!opts.enforce) {
+    // ADVISORY by design (unchanged, byte-identical to pre-`--enforce` behavior):
+    // always exit 0. A genuinely T2 task SHOULD cost a lot; plain `spin budget` must
+    // never block legitimate spend. The signal is the `over_budget` flag + warning,
+    // not an exit code.
+    const overBudget = flagMax != null && anyReported && total > flagMax;
+    return ok({
+      feature: state.feature,
+      reported: anyReported ? { tokens_in: tokensIn, tokens_out: tokensOut, total } : null,
+      by_tier: byTier,
+      max_tokens: flagMax,
+      over_budget: overBudget,
+      advisory: true,
+      warning: overBudget
+        ? `reported spend ${total} tokens exceeds the declared budget of ${flagMax} — advisory only, not enforced`
+        : null,
+    });
+  }
+
+  // --enforce: opt-in ceiling. Precedence: --max-tokens flag, else config.max_tokens
+  // from the active schema. Enforcing with no ceiling anywhere is a malformed
+  // request (exit 2), not a domain block.
+  let ceiling = flagMax;
+  let ceilingSource: 'flag' | 'config' | null = flagMax != null ? 'flag' : null;
+  if (ceiling == null) {
+    const configMax = activeGraph(root).getSchema().config?.max_tokens ?? null;
+    if (configMax != null) {
+      ceiling = configMax;
+      ceilingSource = 'config';
+    }
+  }
+  if (ceiling == null) {
+    return usage(
+      '--enforce requires a ceiling — pass --max-tokens <n> or set config.max_tokens in the active schema'
+    );
+  }
+
+  const overBudget = anyReported && total > ceiling;
+  // `self_reported: true` keeps the honest-accounting doctrine visible even under
+  // enforcement — these numbers are still model-reported, never measured, so a
+  // block here is a policy decision on trust, not a proven overage.
+  const result = {
     feature: state.feature,
     reported: anyReported ? { tokens_in: tokensIn, tokens_out: tokensOut, total } : null,
     by_tier: byTier,
-    max_tokens: max,
+    max_tokens: ceiling,
+    ceiling_source: ceilingSource,
     over_budget: overBudget,
-    advisory: true,
+    advisory: false,
+    enforced: true,
+    self_reported: true,
     warning: overBudget
-      ? `reported spend ${total} tokens exceeds the declared budget of ${max} — advisory only, not enforced`
+      ? `reported spend ${total} tokens exceeds the enforced ceiling of ${ceiling} (self-reported, not measured)`
       : null,
-  });
+  };
+  return overBudget ? blocked(result) : ok(result);
 }
 
-export function fanoutCheckHandler(root: string): HandlerResult {
+export function fanoutCheckHandler(
+  root: string,
+  opts: { manifest?: string; handoffs?: string } = {}
+): HandlerResult {
+  // File-level mode (--manifest): the ledger cannot see a dropped PER-FILE build
+  // worker — the whole build phase is ONE ledger artifact, so its parallel_group is
+  // trivially all-or-nothing. Compare the design manifest against the per-file
+  // build-task sidecars instead. Accounting + verdict only: `missing[]` is the
+  // re-dispatch list for the orchestrating command; the CLI never dispatches.
+  if (opts.handoffs !== undefined && opts.manifest === undefined) {
+    return usage('--handoffs requires --manifest (file-level fan-out mode)');
+  }
+  if (opts.manifest !== undefined) {
+    const manifestPath = path.isAbsolute(opts.manifest) ? opts.manifest : path.join(root, opts.manifest);
+    if (!fs.existsSync(manifestPath)) return usage(`manifest not found: ${opts.manifest}`);
+    let raw: unknown;
+    try {
+      raw = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    } catch (e) {
+      return usage(`manifest is not valid JSON: ${(e as Error).message}`);
+    }
+    const design = DesignHandoff.safeParse(raw);
+    if (!design.success) {
+      return usage(
+        `manifest does not match the design handoff schema: ${design.error.issues
+          .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+          .join('; ')}`
+      );
+    }
+
+    let dir: string;
+    if (opts.handoffs !== undefined) {
+      dir = path.isAbsolute(opts.handoffs) ? opts.handoffs : path.join(root, opts.handoffs);
+    } else if (runStateExists(root)) {
+      dir = handoffDir(root, loadRunState(root).feature);
+    } else {
+      return usage('no run state to infer the active feature — pass --handoffs <dir>');
+    }
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+      return usage(`handoffs dir not found: ${dir}`);
+    }
+
+    const verdict = compareManifestToSidecars(
+      design.data.manifest,
+      readBuildTaskSidecarRefs(dir)
+    );
+    const result = {
+      mode: 'files',
+      feature: design.data.feature,
+      manifest: manifestPath,
+      handoffs_dir: dir,
+      ...verdict,
+    };
+    return verdict.passed ? ok(result) : blocked(result);
+  }
+
+  // Ledger mode (no flags): unchanged — assert no parallel_group in the artifact
+  // graph is partially complete against the run-ledger.
   if (!runStateExists(root)) return usage('no run state — run "spin init" first');
   const graph = activeGraph(root);
   const completed = completedSet(root);
@@ -351,12 +523,24 @@ export function nextHandler(root: string): HandlerResult {
   const onDisk = detectCompleted(graph, featureDir(root, state.feature));
   const detectedOnDisk = [...onDisk].filter((id) => !ledger.has(id)).sort();
 
+  // Terminal gates (`during` / `before_complete` hooks) are enforced against the run's
+  // final artifact and the run-complete flag — otherwise those hooks (kb/brownfield) are
+  // inert and a command that forgot to call them would let the run finish unguarded.
+  const finalId = graph.getFinalArtifactId();
+  const terminal = graph.getTerminalGates();
+  const gateUnpassed = (g: string): boolean => state.gates[g]?.passed !== true;
+
   const ready: Array<{ id: string; model: string | null; parallel_group: string | null }> = [];
   const gateBlocked: Record<string, string[]> = {};
   for (const id of graph.getNextArtifacts(ledger)) {
     // …and an artifact is only truly ready when the lifecycle gate(s) the schema requires
-    // before it are recorded green — otherwise it is gate_blocked, not ready.
-    const unmetGates = graph.getRequiredGatesBefore(id).filter((g) => state.gates[g]?.passed !== true);
+    // before it are recorded green — otherwise it is gate_blocked, not ready. The final
+    // artifact additionally carries the terminal gates.
+    const required = [
+      ...graph.getRequiredGatesBefore(id),
+      ...(id === finalId ? terminal : []),
+    ];
+    const unmetGates = [...new Set(required)].filter(gateUnpassed);
     if (unmetGates.length > 0) {
       gateBlocked[id] = unmetGates;
       continue;
@@ -370,7 +554,9 @@ export function nextHandler(root: string): HandlerResult {
     blocked: graph.getBlocked(ledger),
     gate_blocked: gateBlocked,
     detected_on_disk: detectedOnDisk,
-    complete: graph.isComplete(ledger),
+    // A run is complete only when every artifact is done AND every terminal gate is green —
+    // never report complete:true while a declared `during`/`before_complete` gate is unpassed.
+    complete: graph.isComplete(ledger) && terminal.every((g) => !gateUnpassed(g)),
   });
 }
 
@@ -389,14 +575,29 @@ export function completeHandler(
   const artifact = graph.getArtifact(id);
   if (!artifact) return usage(`unknown artifact "${id}"`);
 
+  // A --handoff passed for an artifact the schema gives no handoff schema is a malformed
+  // invocation (exit 2), not a silently-ignored flag: the caller expected a validation
+  // that will never run. Fail loudly so the mistake surfaces (dogfood: /brainstorm
+  // documented `complete brainstorm --handoff ...` on a handoff-less artifact).
+  if (opts.handoff && !artifact.handoff) {
+    return usage(
+      `artifact "${id}" declares no handoff schema — remove --handoff (it would not be validated)`
+    );
+  }
+
   // Lifecycle gate enforcement — the seam made hard. An artifact cannot be marked
   // complete until the gate(s) the schema's `gates:` map requires BEFORE it are
-  // recorded green in the ledger. Closes the hole where a command that skipped
+  // recorded green in the ledger. The FINAL artifact additionally carries the terminal
+  // gates (`during` / `before_complete`), so a run cannot finish while a declared
+  // kb/brownfield gate is unpassed. Closes the hole where a command that skipped
   // `spin gate` advanced state unobstructed (the map used to be prose-only).
-  const requiredGates = graph.getRequiredGatesBefore(id);
+  const requiredGates = [
+    ...graph.getRequiredGatesBefore(id),
+    ...(id === graph.getFinalArtifactId() ? graph.getTerminalGates() : []),
+  ];
   if (requiredGates.length > 0) {
     const ledger = loadRunState(root);
-    const unmet = requiredGates.filter((g) => ledger.gates[g]?.passed !== true);
+    const unmet = [...new Set(requiredGates)].filter((g) => ledger.gates[g]?.passed !== true);
     if (unmet.length > 0) {
       return blocked({
         gate: 'lifecycle',
@@ -430,6 +631,22 @@ export function completeHandler(
     // Atomic write (tmp + rename) so a crash mid-write can't leave a partial handoff
     // that the gates would then read as invalid JSON — matches the run-ledger's writes.
     atomicWrite(dest, JSON.stringify(check.data, null, 2) + '\n');
+  } else {
+    // Handoff-less artifact: there is no sidecar to validate, so at minimum verify the
+    // artifact actually produced its `generates` output on disk. Marking it complete with
+    // no BRAINSTORM.md/SHIPPED.md/etc. hands the operator a "done" the spine never earned.
+    const outDir = featureDir(root, loadRunState(root).feature);
+    if (!artifactOutputExists(outDir, artifact.generates)) {
+      return blocked({
+        gate: 'output',
+        passed: false,
+        artifact: id,
+        reasons: [
+          `cannot complete "${id}": expected output not found on disk: ${path.join(outDir, artifact.generates)}`,
+        ],
+        unmet: [artifact.generates],
+      });
+    }
   }
 
   // Opaque, model-reported usage rides on the sidecar's optional top-level `usage`
@@ -559,7 +776,24 @@ export function retryHandler(
   return count >= cap ? blocked({ id, retries: count, cap, exceeded: true }) : ok({ id, retries: count, cap });
 }
 
-export function routeHandler(kind: string, opts: { budget?: string }): HandlerResult {
+// `spin route <kind>` (deterministic tier resolution) is unchanged. `spin route
+// --stats` (no kind) is a NEW advisory mode: it reads the run ledger and reports
+// per-tier completion/token accounting + per-artifact retry counts — the same
+// "sum what the model reported" doctrine as `spin budget`, reusing the shared
+// aggregation in core/model-route/usage-stats.ts rather than re-deriving it here.
+// Always exit 0 once a run exists (accounting, not enforcement); exit 2 only for
+// a malformed invocation (no kind AND no --stats, or --stats with no run yet).
+export function routeHandler(
+  root: string,
+  kind: string | undefined,
+  opts: { budget?: string; stats?: boolean }
+): HandlerResult {
+  if (!kind) {
+    if (!opts.stats) return usage('spin route requires <taskKind> or --stats');
+    if (!runStateExists(root)) return usage('no run state — run "spin init" first');
+    const state = loadRunState(root);
+    return ok(aggregateUsageStats(state.events));
+  }
   const budget = (opts.budget === 'low' ? 'low' : 'std') as Budget;
   try {
     return ok(route(kind, budget));
@@ -610,22 +844,9 @@ export function schemaHandler(root: string, action: string, handoffId?: string):
     const target = schemaPath && fs.existsSync(schemaPath) ? schemaPath : null;
     if (!target) return usage('no active schema to validate — run "spin init"');
     try {
-      const schema = parseSchema(fs.readFileSync(target, 'utf-8'));
-      // Referential integrity: an editable schema must only cite handoff ids and gate ids
-      // that actually exist (the "closed sets") — else `spin complete`/`spin gate` would
-      // fail confusingly at runtime instead of here.
-      const refErrors: string[] = [];
-      for (const a of schema.artifacts) {
-        if (a.handoff && !isHandoffId(a.handoff)) {
-          refErrors.push(`artifact "${a.id}" references unknown handoff "${a.handoff}"`);
-        }
-      }
-      for (const [hook, val] of Object.entries(schema.gates ?? {})) {
-        for (const g of Array.isArray(val) ? val : [val]) {
-          if (!isGateId(g)) refErrors.push(`gate hook "${hook}" references unknown gate "${g}"`);
-        }
-      }
-      if (refErrors.length > 0) return blocked({ valid: false, errors: refErrors });
+      // Shared with `spin doctor`, defined once in core/artifact-graph/schema-validate.ts.
+      const result = validateSchemaContent(fs.readFileSync(target, 'utf-8'));
+      if (!result.valid) return blocked({ valid: false, errors: result.errors });
       return ok({ valid: true, schema: target });
     } catch (e) {
       return blocked({ valid: false, error: (e as Error).message });
@@ -774,6 +995,41 @@ export function approveHandler(root: string, opts: { by?: string }): HandlerResu
   const by = opts.by ?? process.env.USER ?? 'human';
   const state = markApproved(root, by);
   return ok({ approved: true, by, at: state.approval?.at ?? null, feature: state.feature });
+}
+
+// ---------------------------------------------------------------------------
+// spin doctor / spin verify-self — orientation + build-integrity diagnostics.
+// Both handlers are thin: the deterministic work lives in core/doctor/ and
+// core/verify-self.ts. Kept in their own region so they never collide with
+// edits elsewhere in this file.
+// ---------------------------------------------------------------------------
+
+export function doctorHandler(root: string): HandlerResult {
+  // Doctor DIAGNOSES, it never blocks — every domain-level problem (no run,
+  // corrupt ledger, invalid schema) is reported INSIDE the report at exit 0.
+  // Exit 3 is reserved for a genuine bug in the check itself.
+  try {
+    return ok(runDoctor(root));
+  } catch (e) {
+    return { code: 3, json: { error: `spin doctor crashed: ${(e as Error).message}` } };
+  }
+}
+
+export function verifySelfHandler(root: string, opts: { manifest?: string }): HandlerResult {
+  const manifestPath = opts.manifest
+    ? path.isAbsolute(opts.manifest)
+      ? opts.manifest
+      : path.join(root, opts.manifest)
+    : path.join(root, 'verification', 'checksums.json');
+  if (!fs.existsSync(manifestPath)) {
+    return usage(`checksum manifest not found: ${manifestPath} — run \`npm run build\` first`);
+  }
+  try {
+    const result = verifySelf(root, manifestPath);
+    return result.passed ? ok(result) : blocked(result);
+  } catch (e) {
+    return { code: 3, json: { error: `spin verify-self crashed: ${(e as Error).message}` } };
+  }
 }
 
 export { markIncomplete };

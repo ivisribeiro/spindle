@@ -135,6 +135,18 @@ describe('E2E: full SDD cycle through the spin CLI', () => {
     expect((await R('complete', 'design', '--handoff', gh)).code).toBe(0);
   });
 
+  it('blocks completing a handoff-less artifact until its output exists on disk', async () => {
+    await R('init', '--schema', 'sdd', '--feature', 'bs');
+    // brainstorm has no handoff schema — completing it with no BRAINSTORM.md would hand the
+    // operator a "done" the spine never earned. It must block until the output exists.
+    const missing = await R('complete', 'brainstorm');
+    expect(missing.code).toBe(1);
+    expect(missing.json.unmet).toContain('BRAINSTORM.md');
+
+    write(root, '.spindle/features/bs/BRAINSTORM.md', '# ideas\n');
+    expect((await R('complete', 'brainstorm')).code).toBe(0);
+  });
+
   it('blocks ship when an acceptance criterion was never satisfied', async () => {
     await R('init', '--schema', 'sdd', '--feature', 'partial');
     const defineHandoff = writeJson(root, 'work/define.json', {

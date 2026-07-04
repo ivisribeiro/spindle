@@ -19,10 +19,12 @@
     "test:coverage": "vitest run --coverage",
     "guard": "node scripts/guard-no-model-calls.js",
     "guard:authorship": "node scripts/guard-no-fork-tells.js",
-    "eval": "node dist/cli/index.js eval --strict"
+    "eval": "node dist/cli/index.js eval --strict",
+    "inventory": "node scripts/gen-inventory.js",
+    "inventory:check": "node scripts/gen-inventory.js --check"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19"
   },
   "dependencies": {
     "commander": "^12.1.0",
@@ -32,10 +34,10 @@
   },
   "devDependencies": {
     "@types/node": "^22.7.4",
-    "@vitest/coverage-v8": "^2.1.2",
-    "esbuild": "^0.24.0",
+    "@vitest/coverage-v8": "^4.1.9",
+    "esbuild": "^0.28.1",
     "typescript": "^5.6.2",
-    "vitest": "^2.1.2"
+    "vitest": "^4.1.9"
   },
   "keywords": [
     "claude-code",

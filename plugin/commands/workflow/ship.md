@@ -31,6 +31,30 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js diff-criteria \
 
 If `unmet[]` is non-empty → surface the unmet criteria to the user and STOP. Do not proceed to G_SHIP.
 
+### 2b. Budget enforcement (optional)
+
+Check the active schema for a declared ceiling:
+
+```
+node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js schema show
+```
+
+If `config.max_tokens` is set, run budget with enforcement before G_SHIP:
+
+```
+node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js budget --enforce
+```
+
+Exit 1 → STOP. Surface the reported spend and the ceiling (`max_tokens`,
+`ceiling_source`) to the user; the numbers are model-reported (`self_reported: true`),
+never measured, so this is a policy decision on trust — the human decides whether to
+raise `config.max_tokens`, investigate the reported usage, or proceed anyway via
+their own re-run. Do not silently continue past this stop.
+
+Exit 0 → continue to G_SHIP. If `config.max_tokens` is unset, skip this step
+entirely — `spin budget` without `--enforce` remains purely advisory and is not
+required here.
+
 ### 3. Gate G_SHIP
 
 ```

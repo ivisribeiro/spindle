@@ -59,6 +59,48 @@ describe('E2E: KB cycle through the spin CLI', () => {
     expect((await R('gate', 'G_KB_COVERAGE')).code).toBe(0);
   });
 
+  it('cannot reach run-complete until the terminal gates (structure + coverage) pass', async () => {
+    await R('init', '--schema', 'kb', '--feature', 'redis');
+    writeJson(root, '.spindle/features/redis/manifest.json', { concepts: [{ slug: 'hashes' }] });
+
+    // author the whole domain on disk
+    write(root, '.spindle/features/redis/index.md', '# redis\n');
+    write(root, '.spindle/features/redis/quick-reference.md', '# cheatsheet\n');
+    write(root, '.spindle/features/redis/concept-hashes.md', '# hashes\n');
+    writeJson(root, '.spindle/features/redis/.handoffs/kb-concept-hashes.json', {
+      concept: 'hashes',
+      summary: 'redis hashes',
+      test_cases: ['HSET k f v'],
+    });
+
+    // every non-final artifact is handoff-less → completes on output existence alone
+    expect((await R('complete', 'manifest')).code).toBe(0);
+    expect((await R('complete', 'concepts')).code).toBe(0);
+    expect((await R('complete', 'quick-reference')).code).toBe(0);
+
+    // the FINAL artifact (index) carries the terminal gates declared by `during` +
+    // `before_complete` — it MUST block while G_KB_STRUCTURE / G_KB_COVERAGE are unpassed
+    const blockedIndex = await R('complete', 'index');
+    expect(blockedIndex.code).toBe(1);
+    expect(blockedIndex.json.unmet).toEqual(
+      expect.arrayContaining(['G_KB_STRUCTURE', 'G_KB_COVERAGE'])
+    );
+
+    // …and the run is NOT reported complete while a terminal gate is red
+    let next = await R('next');
+    expect(next.json.complete).toBe(false);
+    expect(next.json.gate_blocked.index).toEqual(
+      expect.arrayContaining(['G_KB_STRUCTURE', 'G_KB_COVERAGE'])
+    );
+
+    // pass both terminal gates, then the final artifact completes and the run finishes
+    expect((await R('gate', 'G_KB_STRUCTURE')).code).toBe(0);
+    expect((await R('gate', 'G_KB_COVERAGE')).code).toBe(0);
+    expect((await R('complete', 'index')).code).toBe(0);
+    next = await R('next');
+    expect(next.json.complete).toBe(true);
+  });
+
   it('blocks coverage when a concept has too few test cases', async () => {
     await R('init', '--schema', 'kb', '--feature', 'redis');
     writeJson(root, '.spindle/features/redis/manifest.json', { concepts: [{ slug: 'geo' }] });

@@ -116,13 +116,13 @@ between `src/`+`schemas/` and `plugin/`.
 
 | Command | Returns / effect |
 |---|---|
-| `spin init --schema <sdd\|kb> --feature <slug>` | scaffold `.spindle/`, copy the editable schema, create `run.json` |
+| `spin init --schema <sdd\|kb> --feature <slug> [--force]` | scaffold `.spindle/`, copy the editable schema, create `run.json`. One active run per checkout: refuses (exit 1) to clobber a run with recorded progress (`completed[]`/`events[]`/`gates{}`/an approval) unless `--force`; a pristine (zero-progress) run may be re-init'd freely with no flag |
 | `spin next` | `{ ready:[{id,model,parallel_group}], blocked:{}, gate_blocked:{}, detected_on_disk:[], complete:bool }` — ledger-authoritative + gate-aware (file existence alone never makes an artifact `ready`) |
 | `spin order` | full Kahn build order |
-| `spin trace` | the run-ledger timeline (`events[]`) + a tier/token summary. Pure read, exit 0 — a report, not a gate |
+| `spin trace [--verify]` | the run-ledger timeline (`events[]`) + a tier/token summary. Pure read, exit 0 — a report, not a gate. `--verify` walks the events[] tamper-evident hash chain: exit 0 intact (adds `chain:{verified,legacy}`), exit 1 naming the first broken link (`chain:{broken_at,reason}`) |
 | `spin eval [--corpus d] [--strict]` | replay the eval corpus through the REAL gates; exit 1 on a verdict regression (`--strict` also requires every gate to have a pass+block case) |
-| `spin budget [--max-tokens n]` | reconcile model-reported token spend per tier vs an optional ceiling. Advisory — always exit 0 (accounting, not enforcement) |
-| `spin fanout-check` | assert no `parallel_group` is partially complete (a dropped fan-out worker); exit 0 all-consistent / 1 partial. Run before a phase gate |
+| `spin budget [--max-tokens n] [--enforce]` | reconcile model-reported token spend per tier vs an optional ceiling. Advisory by default — always exit 0 (accounting, not enforcement). `--enforce` opts into a real verdict: exit 1 when reported spend exceeds the ceiling (`--max-tokens`, else `config.max_tokens`), exit 0 under it; `--enforce` with no ceiling anywhere is a usage error (exit 2). Enforced output still carries `self_reported: true` — the numbers are model-reported, never measured |
+| `spin fanout-check [--manifest <design.json>] [--handoffs <dir>]` | assert no `parallel_group` is partially complete (a dropped fan-out worker); exit 0 all-consistent / 1 partial. With `--manifest`: file-level mode — compare the design handoff's `manifest[]` against the per-file `build-task` sidecars in `--handoffs` (default: the active feature's `.handoffs/`); exit 1 lists `missing[]` (the re-dispatch list — accounting, never dispatch), exit 2 on malformed manifest/dir. Run before a phase gate |
 | `spin state` | the `run.json` ledger (`completed[]`, `retries{}`, `gates{}`) |
 | `spin complete <id> [--handoff f.json]` | validate the handoff against the artifact's schema, THEN mark complete (exit 1 if invalid) |
 | `spin approve [--by <name>]` | record human sign-off (required by `G_SHIP`). REFUSES unless stdin is an interactive TTY — an automated agent cannot approve. No bypass flag |
@@ -135,7 +135,7 @@ between `src/`+`schemas/` and `plugin/`.
 | `spin kb-install <domain> [--from d] [--dest d]` | publish a complete flat KB domain from `.spindle/` into `plugin/kb/` (pure copy) so `kb_domains` resolves; exit 1 if the source is incomplete |
 | `spin retry <id> --inc \| --ok` | retry counter vs `config.build_retry_cap`; `--ok` exits 1 at ceiling |
 | `spin status` | alias for `spin state` — the `run.json` ledger |
-| `spin route <taskKind> [--budget std\|low]` | `{ tier, model, reason }` |
+| `spin route <taskKind> [--budget std\|low]` | `{ tier, model, reason }`. With no `<taskKind>`, `spin route --stats` reports advisory per-tier routing accounting from the run ledger — `{ byTier:{haiku\|sonnet\|opus:{completions,tokens_in,tokens_out}}, retries:{<artifactId>:n}, unattributed }` — always exit 0 once a run exists (accounting, not enforcement); exit 2 with neither a kind nor `--stats` |
 | `spin tier [--risk low\|medium\|high] [--breadth single\|few\|many] [--mechanical] [--have-context] [--reversible] [--irreversible]` | classify a task into orchestration tier (T0/T1/T2) from its signals; always exit 0 |
 | `spin kinds` | list all known routing task-kinds |
 | `spin schema show \| validate` | inspect / validate the active editable schema |
@@ -143,6 +143,8 @@ between `src/`+`schemas/` and `plugin/`.
 | `spin reconcile --audit <file>` | detect doc-vs-code drift in an audit handoff; exit 1 if inconsistent/drift items exist |
 | `spin config-drift --declared <list> --present <list>` | detect tools declared in CI but absent from the lockfile (comma-separated lists); exit 1 if any are missing |
 | `spin spec-drift --build <file>` | surface acceptance criteria the build CORRECTED vs DEFINE (criteria delta); exit 1 if any spec drift is unreconciled |
+| `spin doctor` | read-only orientation + environment diagnosis: node version vs `engines.node`, active run + ledger health, schema validity, gate verdicts summary, and the exact next slash command; DIAGNOSES, never blocks — always exit 0 (even a corrupt ledger is reported, not blocked); exit 3 only if the check itself crashes |
+| `spin verify-self [--manifest f]` | recompute sha256 over `dist/cli/index.js`, `plugin/dist/cli/index.js`, and every `schemas/**` + `plugin/schemas/**` file, compare against `verification/checksums.json` (written by `npm run build`); exit 0 all match / 1 lists `mismatched`/`missing` (a hand-edited dist or a schema sync drift) / 2 if the manifest itself is absent |
 
 ---
 
@@ -216,6 +218,29 @@ The seam dictates *where* each kind of change lands. Pick the layer first.
 
 Never add a gate by having a worker "check" something — gates are deterministic
 and live in `src/core`, not in a prompt.
+
+### Wire a gate into a schema (the `gates:` lifecycle map)
+
+A workflow schema's `gates:` map is the ONLY way a gate is enforced by the engine
+(not by command prose). Its keys are a **closed, enforceable set** — anything else
+is silently inert, so `spin schema validate` rejects an unknown key (it already
+rejected unknown gate-id *values*). The three enforceable key forms:
+
+| Hook key | Anchor the engine enforces |
+|---|---|
+| `before_<artifactId>` | gate(s) must be green before `<artifactId>` completes AND before `spin next` lists it as ready |
+| `before_complete` | **terminal**: green before the run's final artifact completes AND before `spin next` reports `complete:true` |
+| `during` | **terminal**: same anchor as `before_complete` |
+
+`during` and `before_complete` deliberately share the **run-terminal** anchor (the
+final artifact in Kahn build order, and the run-complete flag). A mid-workflow
+anchor for a bare `during` is either impossible — `G_KB_STRUCTURE` reads the very
+concept files the artifacts it would guard produce, so gating them on it deadlocks
+— or redundant, so both terminal hooks fire at the run's completion checkpoint. No
+declared hook is inert: kb's `during: G_KB_STRUCTURE` / `before_complete:
+G_KB_COVERAGE` and brownfield's `during: G_AUDIT` are enforced by `spin
+complete`/`spin next`, not by a command remembering to call them. Resolution lives
+in `src/core/artifact-graph/gate-hooks.ts`.
 
 ### Add a handoff schema
 1. Add the JSON Schema to `schemas/` and register its id in the closed set the
@@ -297,6 +322,9 @@ A command or worker reads `.spindle/` via `spin state` / `spin next`; only `spin
 mutates `run.json`. Do not hand-edit the ledger — the determinism guarantee
 depends on it being machine-owned.
 
+One active run per checkout; `spin init` refuses to clobber an in-progress run
+without `--force`.
+
 `run.json` also carries an append-only `events[]` ledger — the run's *trajectory*
 (`complete` / `gate` / `retry`), distinct from the current-state maps
 (`completed[]` / `retries{}` / `gates{}`). It is written only at the existing CLI
@@ -305,7 +333,10 @@ unchanged gate re-run appends nothing). A `complete` event may carry an **opaque
 model-reported `usage`** annotation (`{tier, model?, tokens_in?, tokens_out?}`) that
 the worker put on its handoff sidecar — the CLI **records** it, never computes or
 prices it (the guard test forbids tokenizers/pricing in `src/`). `spin trace` reads
-this ledger; it is accounting, not enforcement.
+this ledger; it is accounting, not enforcement. Every event appended from
+`src/core/run/event-chain.ts` onward carries a `hash` linking it to the previous
+hashed event, making `events[]` tamper-EVIDENT (`spin trace --verify` walks the
+chain) without making it tamper-proof — the state maps stay plain, forgeable JSON.
 
 ---
 

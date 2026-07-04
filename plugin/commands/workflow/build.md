@@ -47,7 +47,7 @@ Returns `{ ready:[{id,model,parallel_group}], blocked:{}, complete:bool }`.
 Build artifacts come back ready with `parallel_group: by_manifest_layer` — that
 grouping is your fan-out instruction: independent files/layers run together.
 
-If `complete` is already `true`, skip to step 5 (gate). Otherwise read the
+If `complete` is already `true`, skip to step 7 (gate). Otherwise read the
 design handoff manifest to enumerate the files/layers to build.
 
 ```bash
@@ -124,9 +124,46 @@ Re-run `spin next` after the group drains to confirm there's nothing left ready.
 
 ---
 
-## 5. Aggregate the build-report handoff and complete the phase
+## 5. File-level fanout check — prove no worker was silently dropped
 
-Once every build unit has passed `spin handoff-check build-task`, assemble the phase-level
+`spin handoff-check` only validates the sidecars that EXIST. A worker that never
+returned leaves no sidecar to fail, and the ledger cannot see it either — the
+whole build phase is one ledger artifact. Before aggregating the build-report,
+make the CLI compare the design manifest against the per-file `build-task`
+sidecars on disk:
+
+```bash
+spin fanout-check --manifest .spindle/features/<feature>/.handoffs/design.json
+```
+
+(`--handoffs <dir>` overrides the sidecar directory; it defaults to the active
+feature's `.handoffs/`.)
+
+- exit `0` → every manifest file is accounted for by a `build-task` sidecar.
+  Proceed to aggregate the build-report.
+- exit `1` → partial fan-out: at least one per-file worker was dropped. The
+  JSON's `missing[]` lists exactly the manifest entries with no sidecar — that
+  is your re-dispatch list. **STOP — do not aggregate.** Re-dispatch ONE
+  `build-worker` per `missing[]` entry (all in a single Task message), through
+  the normal path (worker → sidecar → `spin handoff-check build-task …`),
+  bounded by the same ceiling as step 4:
+
+  ```bash
+  spin retry build --inc
+  spin retry build --ok    # exit 1 at ceiling → STOP, surface, do not fake completion
+  ```
+
+  Then re-run `spin fanout-check --manifest …` until it exits `0` (or the
+  retry ceiling stops you — surface the still-missing units to the user).
+- exit `2` → the invocation is malformed (bad manifest path / handoffs dir).
+  That is a bug in this command, not a gate — fix the call.
+
+---
+
+## 6. Aggregate the build-report handoff and complete the phase
+
+Once every build unit has passed `spin handoff-check build-task` and the
+file-level fanout check is green, assemble the phase-level
 `build-report` handoff:
 
 ```json
@@ -186,7 +223,7 @@ spin complete build --handoff .spindle/features/<feature>/.handoffs/build.json
 
 ---
 
-## 6. G_BUILD — the gate that replaces the checkbox
+## 7. G_BUILD — the gate that replaces the checkbox
 
 This is the decision point. No prose, no checkbox — `G_BUILD` verifies, in code,
 that every manifest file exists on disk, the criteria-diff is empty, and the
@@ -223,5 +260,8 @@ spin gate G_BUILD
 - The retry loop is bounded by `config.build_retry_cap` via
   `spin retry build --inc | --ok`; there is no prose "max N retries".
 - Fan out the whole `by_manifest_layer` group in a single Task message.
+- Run `spin fanout-check --manifest …` before aggregating the build-report — a
+  dropped per-file worker is exit 1 with a `missing[]` re-dispatch list, never
+  something inferred from prose. The CLI accounts; this command re-dispatches.
 - Use only the `spin` commands, gates (`G_DESIGN`, `G_BUILD`, `G_HANDOFF`), and
   handoff ids (`design`, `build-task`, `build-report`, `define`) named here.

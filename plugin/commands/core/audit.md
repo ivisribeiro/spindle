@@ -26,6 +26,13 @@ spin init --schema brownfield --feature <name>
 `payments-core`, `erin-ingest`). This creates `.spindle/schema.yaml` (pointing at
 the bundled brownfield schema) and the feature directory tree.
 
+**Exit 1 — active-run conflict:** `spin init` refuses to clobber a run that already
+has recorded progress (one active run per checkout). Surface the `reason` (it names
+the active schema + feature) to the human and STOP. Do **not** pass `--force`
+yourself — overwriting an in-progress run is a human decision, never an autonomous
+one. Tell the user to either finish/abandon the active run themselves, or re-run
+`/audit` with `spin init --force` by their own hand.
+
 If `.spindle/` already exists, skip this step. Confirm the schema is brownfield:
 
 ```bash

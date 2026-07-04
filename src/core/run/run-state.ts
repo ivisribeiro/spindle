@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { RunStateSchema, type RunState, type GateRecord, type RunEvent, type Usage } from './run-state.schema.js';
+import { hashNewEvent } from './event-chain.js';
 
 // Atomic, Zod-validated read/write of .spindle/run.json. This module is the single
 // writer of run-state. The LLM never writes here; it only triggers CLI commands
@@ -46,6 +47,17 @@ export class RunStateError extends Error {
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** Append `event` to `state.events`, hash-chained via event-chain.ts. This is
+ *  the ONLY way a new event should ever be added to the ledger — every
+ *  mutation point below routes through it so no appended event is missing a
+ *  `hash`. Dedup (idempotency) is decided by each CALLER before invoking this
+ *  (e.g. markComplete only calls it for a NEWLY-completed id), so it never
+ *  looks at hash/prev — appending stays a pure "did the caller decide to add
+ *  an event" question, unaffected by the chain. */
+function appendEvent(state: RunState, event: RunEvent): RunEvent[] {
+  return [...state.events, hashNewEvent(state.events, event)];
 }
 
 /** Atomic write: write to a temp file then rename (rename is atomic on POSIX). */
@@ -115,7 +127,7 @@ export function markApproved(root: string, by: string): RunState {
   const state = loadRunState(root);
   const at = nowIso();
   state.approval = { at, by };
-  state.events = [...state.events, { kind: 'approve', at, by }];
+  state.events = appendEvent(state, { kind: 'approve', at, by });
   return saveRunState(root, state);
 }
 
@@ -125,7 +137,7 @@ export function markComplete(root: string, id: string, usage?: Usage): RunState 
   // `spin complete <id>` on an already-done artifact stays idempotent on the ledger.
   if (!state.completed.includes(id)) {
     state.completed = [...state.completed, id].sort();
-    state.events = [...state.events, { kind: 'complete', at: nowIso(), id, ...(usage ? { usage } : {}) }];
+    state.events = appendEvent(state, { kind: 'complete', at: nowIso(), id, ...(usage ? { usage } : {}) });
   }
   return saveRunState(root, state);
 }
@@ -164,7 +176,7 @@ export function incRetry(root: string, id: string): number {
   state.retries = { ...state.retries, [id]: next };
   // A retry is always a genuine state change (a deliberate counter bump), so every
   // increment is its own event.
-  state.events = [...state.events, { kind: 'retry', at: nowIso(), id, attempt: next }];
+  state.events = appendEvent(state, { kind: 'retry', at: nowIso(), id, attempt: next });
   saveRunState(root, state);
   return next;
 }
@@ -184,7 +196,7 @@ export function recordGate(root: string, gateId: string, record: Omit<GateRecord
   const changed =
     !last || last.passed !== record.passed || JSON.stringify(last.reasons) !== JSON.stringify(reasons);
   if (changed) {
-    state.events = [...state.events, { kind: 'gate', at, gate: gateId, passed: record.passed, reasons }];
+    state.events = appendEvent(state, { kind: 'gate', at, gate: gateId, passed: record.passed, reasons });
   }
   return saveRunState(root, state);
 }

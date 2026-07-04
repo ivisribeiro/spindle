@@ -4,12 +4,24 @@ description: >
   Brownfield audit-driven workflow. Unlike the greenfield SDD cycle (which starts
   from a blank define), this starts from an existing codebase: a first-class
   `audit` artifact inventories what is already built (with evidence), the gaps,
-  the weak points and the ops-readiness controls, then bridges into define/design
-  via the typed proposedTasks. feature = the domain or subsystem under audit.
+  the weak points and the ops-readiness controls, then bridges into the full
+  define/design/build/ship cycle via the typed proposedTasks. feature = the domain
+  or subsystem under audit.
 
-# Lifecycle hook -> gate(s) the command must run.
+config:
+  build_retry_cap: 3
+
+# Lifecycle hook -> gate(s). G_AUDIT is anchored TWICE: `before_define` fail-fasts the
+# run right after the audit phase (define cannot proceed on an un-gated audit — the
+# same contract the /audit command promises), and `during` keeps it as a TERMINAL
+# backstop (the run can never be reported complete on an un-evidenced audit even if a
+# command skipped the early anchor). The other before_<id> hooks mirror the SDD cycle.
 gates:
   during: G_AUDIT
+  before_define: G_AUDIT
+  before_design: G_DEFINE
+  before_build: G_DESIGN
+  before_ship: [G_BUILD, G_SHIP]
 
 artifacts:
   - id: audit
@@ -45,3 +57,19 @@ artifacts:
     validate:
       md_sections: [Overview, File Manifest, Decisions]
       manifest_table: true
+
+  - id: build
+    generates: BUILD_REPORT.md
+    template: build-report.md
+    model: sonnet
+    handoff: build-report
+    parallel_group: by_manifest_layer
+    requires: [design]
+    description: Phase 3 — execute the manifest; results keyed by AC-n.
+
+  - id: ship
+    generates: SHIPPED.md
+    template: shipped.md
+    model: haiku
+    requires: [build]
+    description: Phase 4 — archive + lessons; gated on all criteria met.
