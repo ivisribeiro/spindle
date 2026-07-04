@@ -57,7 +57,7 @@ export async function runCli(
   program
     .name('spin')
     .description('Spindle — deterministic spec-driven orchestration spine')
-    .version('0.1.0')
+    .version('0.2.0')
     .option('--root <dir>', 'project root containing .spindle/ (default: cwd)')
     .enablePositionalOptions();
 

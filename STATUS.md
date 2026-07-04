@@ -1,6 +1,6 @@
 # STATUS
 
-Version: 0.1.0 (`package.json`). Pre-1.0 — internals may still shift.
+Version: 0.2.0 (`package.json`). Pre-1.0 — internals may still shift.
 
 ## Verified test baseline
 

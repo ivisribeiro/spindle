@@ -1,6 +1,6 @@
 {
   "name": "spindle",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A deterministic, testable orchestration spine (the spin CLI) for spec-driven development in Claude Code — the CLI never calls a model; slash commands orchestrate Claude around CLI-enforced gates.",
   "type": "module",
   "bin": {

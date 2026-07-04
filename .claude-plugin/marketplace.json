@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "spindle",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "description": "Deterministic spec-driven orchestration for Claude Code. The spin CLI is the spine (it never calls a model); slash commands orchestrate Claude around CLI-enforced gates. 17 agents, 1 knowledge base domain, 30 commands, 11 gates, model routing (Haiku/Sonnet/Opus), adversarial verification.",
       "source": "./plugin",
       "keywords": [

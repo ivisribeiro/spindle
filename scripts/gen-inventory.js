@@ -181,6 +181,28 @@ function checkManifestClaims(inventory) {
     }
   }
 
+  // Version lives in four declared spots + the CLI's .version() literal. If they drift,
+  // the plugin manager reports "already at the latest version" against stale content —
+  // a bump that misses one spot is exactly the silent failure this check exists to catch.
+  const canonical = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf-8')).version;
+  const versionSpots = [
+    ['plugin/.claude-plugin/plugin.json', pluginJson.version],
+    [`${marketplaceLabel} (plugin entry)`, marketplace.plugins?.[0]?.version],
+    [
+      'src/cli/index.ts (.version literal)',
+      fs.readFileSync(path.join(ROOT, 'src', 'cli', 'index.ts'), 'utf-8').match(/\.version\('([^']+)'\)/)?.[1],
+    ],
+    [
+      'STATUS.md',
+      fs.readFileSync(path.join(ROOT, 'STATUS.md'), 'utf-8').match(/^Version:\s*(\S+)/m)?.[1],
+    ],
+  ];
+  for (const [label, found] of versionSpots) {
+    if (found !== canonical) {
+      problems.push(`${label}: version "${found}" does not match package.json "${canonical}"`);
+    }
+  }
+
   return problems;
 }
 
