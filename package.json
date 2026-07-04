@@ -24,7 +24,7 @@
     "inventory:check": "node scripts/gen-inventory.js --check"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19"
   },
   "dependencies": {
     "commander": "^12.1.0",
