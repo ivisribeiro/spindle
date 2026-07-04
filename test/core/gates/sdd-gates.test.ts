@@ -391,7 +391,7 @@ describe('G_SHIP', () => {
     expect(r.unmet).toContain('phantom:AC-7');
   });
 
-  it('passes but SURFACES spec-drift when the build corrected a criterion (I-C / F6)', () => {
+  it('BLOCKS on unreconciled spec-drift when the build corrected a criterion (I-C / F6 / P0)', () => {
     writeHandoff('define', { feature: 'feat', clarity: 1, criteria: ['AC-1'] });
     writeHandoff('build', {
       feature: 'feat',
@@ -401,8 +401,44 @@ describe('G_SHIP', () => {
     });
     approve();
     const r = gShip(ctx);
-    expect(r.passed).toBe(true); // a legitimate correction does not block ship
+    expect(r.passed).toBe(false); // a false DEFINE must not ride a green G_SHIP
+    expect(r.unmet).toContain('spec-drift:AC-1');
     expect(r.reasons.some((x) => x.includes('CORRECTED') && x.includes('AC-1'))).toBe(true);
+  });
+
+  it('emits one spec-drift:<AC> unmet entry per affected criterion', () => {
+    writeHandoff('define', { feature: 'feat', clarity: 1, criteria: ['AC-1', 'AC-2'] });
+    writeHandoff('build', {
+      feature: 'feat',
+      results: [
+        { criterion: 'AC-1', status: 'passed', corrected_spec: true, correction: 'wrong CRC' },
+        { criterion: 'AC-2', status: 'passed', corrected_spec: true, correction: 'wrong length' },
+      ],
+    });
+    approve();
+    const r = gShip(ctx);
+    expect(r.passed).toBe(false);
+    expect(r.unmet).toEqual(expect.arrayContaining(['spec-drift:AC-1', 'spec-drift:AC-2']));
+  });
+
+  it('PASSES when a corrected criterion is reconciled into DEFINE (reconciled: true)', () => {
+    writeHandoff('define', { feature: 'feat', clarity: 1, criteria: ['AC-1'] });
+    writeHandoff('build', {
+      feature: 'feat',
+      results: [
+        {
+          criterion: 'AC-1',
+          status: 'passed',
+          corrected_spec: true,
+          correction: 'CRC 29B1 not 1D3D',
+          reconciled: true,
+        },
+      ],
+    });
+    approve();
+    const r = gShip(ctx);
+    expect(r.passed).toBe(true); // an acknowledged correction lets the ship loop converge
+    expect(r.unmet.some((u) => u.startsWith('spec-drift:'))).toBe(false);
   });
 });
 

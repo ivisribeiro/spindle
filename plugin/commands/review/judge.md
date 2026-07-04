@@ -65,8 +65,6 @@ export JUDGE_MODEL=openai/gpt-4o
 export JUDGE_BUDGET=25
 ```
 
-Full setup guide: `docs/getting-started/judge-setup.md`
-
 ---
 
 ## Examples
@@ -139,5 +137,3 @@ This is **V0** — opt-in, per-file, single model. Future versions:
 - **V2** — multi-model ensembles (`--judge=ensemble` queries GPT + Gemini, requires consensus)
 - **V3** — opt-in PostToolUse hook for specific file patterns
 - **V4** — MCP server wrapper + high-stakes classifier using agent tier signal
-
-See `tasks/backlog.md` → Judge Layer via OpenRouter for the full roadmap.

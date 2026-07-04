@@ -1,1 +1,1 @@
-{ "agents": [] }
+{ "agents": [{ "name": "foo-worker", "model": "opus", "kb_domains": [] }] }

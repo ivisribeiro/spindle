@@ -1,0 +1,61 @@
+name: sdd
+version: 1
+description: >
+  Five-phase spec-driven development workflow. This file is DATA, not code —
+  fork it per project to change the workflow with no rebuild. The spin CLI reads
+  it to order artifacts (Kahn topo-sort), route models, and run gates.
+
+config:
+  build_retry_cap: 3
+
+# Lifecycle hook -> gate(s) the command must run before advancing.
+gates:
+  before_design: G_DEFINE
+  before_build: G_DESIGN
+  before_ship: [G_BUILD, G_SHIP]
+
+artifacts:
+  - id: brainstorm
+    generates: BRAINSTORM.md
+    template: brainstorm.md
+    model: opus
+    requires: []
+    description: Optional Phase 0 — collaborative exploration before requirements.
+
+  - id: define
+    generates: DEFINE.md
+    template: define.md
+    model: opus
+    handoff: define
+    requires: []
+    description: Phase 1 — requirements with stable AC-n acceptance criteria.
+    validate:
+      md_sections: [Why, What, Acceptance Criteria]
+      criteria_ids_prefix: AC
+
+  - id: design
+    generates: DESIGN.md
+    template: design.md
+    model: opus
+    handoff: design
+    requires: [define]
+    description: Phase 2 — architecture + a file manifest the build executes.
+    validate:
+      md_sections: [Overview, File Manifest, Decisions]
+      manifest_table: true
+
+  - id: build
+    generates: BUILD_REPORT.md
+    template: build-report.md
+    model: sonnet
+    handoff: build-report
+    parallel_group: by_manifest_layer
+    requires: [design]
+    description: Phase 3 — execute the manifest; results keyed by AC-n.
+
+  - id: ship
+    generates: SHIPPED.md
+    template: shipped.md
+    model: haiku
+    requires: [build]
+    description: Phase 4 — archive + lessons; gated on all criteria met.

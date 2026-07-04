@@ -611,6 +611,11 @@ export function completeHandler(
     }
   }
 
+  // Advisory-only (never affects the exit code): unknown top-level keys the handoff's
+  // schema silently stripped on parse (e.g. a typo like "files_writen"). Set below when
+  // the artifact carries a handoff sidecar; threaded into the exit-0 result at the end.
+  let unknownKeys: string[] | undefined;
+
   if (artifact.handoff) {
     if (!opts.handoff) {
       return usage(`artifact "${id}" requires --handoff <file.json> (schema: ${artifact.handoff})`);
@@ -625,6 +630,7 @@ export function completeHandler(
         errors: check.errors,
       });
     }
+    unknownKeys = check.unknown_keys;
     // Persist the validated handoff canonically so gates read it deterministically.
     const state = loadRunState(root);
     const dest = path.join(handoffDir(root, state.feature), `${id}.json`);
@@ -667,7 +673,11 @@ export function completeHandler(
   }
 
   const state = markComplete(root, id, reportedUsage);
-  return ok({ completed: id, runState: state });
+  return ok({
+    completed: id,
+    runState: state,
+    ...(unknownKeys && unknownKeys.length > 0 ? { unknown_keys: unknownKeys } : {}),
+  });
 }
 
 export function validateHandler(root: string, idOrPath: string): HandlerResult {

@@ -21024,6 +21024,151 @@ function isHandoffId(id) {
   return Object.prototype.hasOwnProperty.call(HANDOFF_SCHEMAS, id);
 }
 
+// src/core/handoff/describe.ts
+function unwrap(t) {
+  let core = t;
+  let required = true;
+  let def;
+  for (; ; ) {
+    const name = core._def?.typeName;
+    if (name === "ZodOptional") {
+      required = false;
+      core = core._def.innerType;
+    } else if (name === "ZodDefault") {
+      required = false;
+      const d = core._def;
+      try {
+        def = d.defaultValue();
+      } catch {
+      }
+      core = d.innerType;
+    } else if (name === "ZodNullable") {
+      core = core._def.innerType;
+    } else {
+      break;
+    }
+  }
+  return { core, required, default: def };
+}
+function stringConstraints(t) {
+  const checks = t._def.checks ?? [];
+  const out = [];
+  for (const c of checks) {
+    if (c.kind === "regex" && c.regex) out.push(`matches ${c.regex.toString()}`);
+    else if (c.kind === "min") out.push(`min length ${c.value}`);
+    else if (c.kind === "max") out.push(`max length ${c.value}`);
+    else if (c.kind === "email") out.push("email");
+    else out.push(c.kind);
+  }
+  return out;
+}
+function numberConstraints(t) {
+  const checks = t._def.checks ?? [];
+  return checks.map((c) => c.value !== void 0 ? `${c.kind} ${c.value}` : c.kind);
+}
+function describeCore(core) {
+  const name = core._def?.typeName;
+  switch (name) {
+    case "ZodString": {
+      const constraints = stringConstraints(core);
+      return { type: "string", ...constraints.length ? { constraints } : {} };
+    }
+    case "ZodNumber": {
+      const constraints = numberConstraints(core);
+      return { type: "number", ...constraints.length ? { constraints } : {} };
+    }
+    case "ZodBoolean":
+      return { type: "boolean" };
+    case "ZodEnum":
+      return { type: "enum", enumValues: core._def.values };
+    case "ZodArray": {
+      const adef = core._def;
+      const el = unwrap(adef.type);
+      const elDesc = describeCore(el.core);
+      const constraints = [];
+      if (adef.minLength) constraints.push(`min ${adef.minLength.value} item(s)`);
+      if (adef.maxLength) constraints.push(`max ${adef.maxLength.value} item(s)`);
+      for (const c of elDesc.constraints ?? []) constraints.push(`items ${c}`);
+      if (elDesc.enumValues) constraints.push(`items in ${JSON.stringify(elDesc.enumValues)}`);
+      return {
+        type: `array<${elDesc.type}>`,
+        ...constraints.length ? { constraints } : {},
+        ...elDesc.fields ? { fields: elDesc.fields } : {}
+      };
+    }
+    case "ZodObject":
+      return { type: "object", fields: describeObject(core) };
+    default:
+      return { type: name ? name.replace(/^Zod/, "").toLowerCase() : "unknown" };
+  }
+}
+function describeObject(obj) {
+  const shape = obj.shape;
+  return Object.entries(shape).map(([fname, ztype]) => {
+    const u = unwrap(ztype);
+    const core = describeCore(u.core);
+    return {
+      name: fname,
+      type: core.type,
+      required: u.required,
+      ...core.constraints ? { constraints: core.constraints } : {},
+      ...core.enumValues ? { enumValues: core.enumValues } : {},
+      ...u.default !== void 0 ? { default: u.default } : {},
+      ...core.fields ? { fields: core.fields } : {}
+    };
+  });
+}
+function describeHandoff(id) {
+  if (!isHandoffId(id)) return null;
+  const schema = HANDOFF_SCHEMAS[id];
+  return { id, fields: describeObject(schema) };
+}
+function listHandoffIds() {
+  return Object.keys(HANDOFF_SCHEMAS).sort();
+}
+
+// src/core/handoff/unknown-keys.ts
+function typeNameOf(t) {
+  return t._def?.typeName;
+}
+function objectShape(t) {
+  if (typeNameOf(t) !== "ZodObject") return null;
+  return t.shape;
+}
+function arrayElementType(t) {
+  if (typeNameOf(t) !== "ZodArray") return null;
+  return t._def.type;
+}
+function isPlainObject(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function findUnknownKeys(schema, raw) {
+  if (!isPlainObject(raw)) return [];
+  const shape = objectShape(unwrap(schema).core);
+  if (!shape) return [];
+  const unknown = [];
+  const knownTopKeys = new Set(Object.keys(shape));
+  for (const key of Object.keys(raw)) {
+    if (!knownTopKeys.has(key)) unknown.push(key);
+  }
+  for (const [key, fieldSchema] of Object.entries(shape)) {
+    const rawField = raw[key];
+    if (!Array.isArray(rawField)) continue;
+    const elementType = arrayElementType(unwrap(fieldSchema).core);
+    if (!elementType) continue;
+    const elementShape = objectShape(unwrap(elementType).core);
+    if (!elementShape) continue;
+    const knownElementKeys = new Set(Object.keys(elementShape));
+    rawField.forEach((item, index) => {
+      if (!isPlainObject(item)) return;
+      for (const itemKey of Object.keys(item)) {
+        if (!knownElementKeys.has(itemKey)) unknown.push(`${key}[${index}].${itemKey}`);
+      }
+    });
+  }
+  return unknown;
+}
+
 // src/core/handoff/handoff-check.ts
 function checkHandoffObject(schemaId, value) {
   if (!isHandoffId(schemaId)) {
@@ -21042,7 +21187,14 @@ function checkHandoffObject(schemaId, value) {
       errors: result.error.issues.map((e) => `${e.path.join(".") || "(root)"}: ${e.message}`)
     };
   }
-  return { ok: true, schemaId, errors: [], data: result.data };
+  const unknownKeys = findUnknownKeys(schema, value);
+  return {
+    ok: true,
+    schemaId,
+    errors: [],
+    data: result.data,
+    ...unknownKeys.length > 0 ? { unknown_keys: unknownKeys } : {}
+  };
 }
 function checkHandoffFile(schemaId, filePath) {
   if (!fs3.existsSync(filePath)) {
@@ -21273,17 +21425,21 @@ function gShip(ctx) {
       ["approval"]
     );
   }
-  const reasons = [
-    `all ${define.criteria.length} acceptance criteria met`,
-    `approved by ${ctx.runState.approval.by}`
-  ];
   const drift = specDrift(buildRes?.results ?? []);
   if (!drift.clean) {
-    reasons.push(
-      `\u26A0 ${drift.drifted.length} acceptance criterion/criteria were CORRECTED during build \u2014 reconcile DEFINE.md: ${drift.drifted.map((d) => `${d.criterion} (${d.correction})`).join("; ")} \u2014 run: spin spec-drift --build <build-report.json>`
+    return block(
+      gate,
+      [
+        `${drift.drifted.length} acceptance criterion/criteria were CORRECTED during build but DEFINE.md is not reconciled \u2014 the shipped spec is still false: ${drift.drifted.map((d) => `${d.criterion} (${d.correction})`).join("; ")}`,
+        "update DEFINE.md then set `reconciled: true` on each corrected build result \u2014 run `spin spec-drift --build <build-report.json>` for the detailed diff"
+      ],
+      drift.drifted.map((d) => `spec-drift:${d.criterion}`)
     );
   }
-  return pass(gate, reasons);
+  return pass(gate, [
+    `all ${define.criteria.length} acceptance criteria met`,
+    `approved by ${ctx.runState.approval.by}`
+  ]);
 }
 function safeJson(filePath) {
   try {
@@ -21451,6 +21607,7 @@ function parseAgentFrontmatter(markdown) {
 }
 
 // src/core/gates/router-gate.ts
+var VALID_MODELS = /* @__PURE__ */ new Set(["haiku", "sonnet", "opus", "inherit"]);
 function listAgentFiles(dir) {
   const out = [];
   function walk(d) {
@@ -21486,18 +21643,38 @@ function gRouterCoverage(ctx) {
   const kbDir = ctx.args.kb ? path5.resolve(ctx.root, ctx.args.kb) : path5.resolve(ctx.root, "plugin/kb");
   const kbPresent = isDir(kbDir);
   const rosterNames = [];
+  const rosterModel = /* @__PURE__ */ new Map();
+  const degraded = /* @__PURE__ */ new Set();
   const declaredDomains = [];
   for (const file of listAgentFiles(agentsDir)) {
+    const rel = path5.relative(agentsDir, file);
     const md = fs6.readFileSync(file, "utf-8");
     const fm = parseAgentFrontmatter(md);
     if (!fm.ok) {
-      reasons.push(`invalid agent frontmatter: ${path5.relative(agentsDir, file)} (${fm.error})`);
-      unmet.push(path5.relative(agentsDir, file));
+      reasons.push(`invalid agent frontmatter: ${rel} (${fm.error})`);
+      unmet.push(rel);
       continue;
     }
-    rosterNames.push(fm.data.name);
+    const name = fm.data.name;
+    rosterNames.push(name);
+    rosterModel.set(name, fm.data.model ?? "inherit");
+    if (fm.degraded) {
+      reasons.push(
+        `degraded agent frontmatter: ${rel} (name-only fallback \u2014 description missing or unparseable; fix the frontmatter)`
+      );
+      unmet.push(`degraded:${name}`);
+      degraded.add(name);
+      continue;
+    }
+    const model = fm.data.model ?? "inherit";
+    if (!VALID_MODELS.has(model)) {
+      reasons.push(
+        `agent "${name}" declares invalid model "${model}" (must be one of ${[...VALID_MODELS].join("|")})`
+      );
+      unmet.push(`invalid-model:${name}`);
+    }
     for (const d of fm.data.kb_domains ?? []) {
-      declaredDomains.push({ agent: fm.data.name, domain: d });
+      declaredDomains.push({ agent: name, domain: d });
     }
   }
   let routing;
@@ -21506,10 +21683,41 @@ function gRouterCoverage(ctx) {
   } catch {
     return block(gate, [`routing file is not valid JSON: ${routingPath}`], ["routing-json"]);
   }
-  const routed = routing.agents ?? [];
+  const rawEntries = Array.isArray(routing.agents) ? routing.agents : [];
+  const legacyCount = rawEntries.filter((e) => typeof e === "string").length;
+  if (legacyCount > 0) {
+    return block(
+      gate,
+      [
+        `routing.json entry must be an object {name, model, kb_domains}, found ${legacyCount} legacy string ${legacyCount === 1 ? "entry" : "entries"} \u2014 regenerate with /gen-router`
+      ],
+      ["legacy-format"]
+    );
+  }
+  const routedEntries = [];
+  for (const e of rawEntries) {
+    if (typeof e !== "object" || e === null || Array.isArray(e)) {
+      reasons.push(`routing.json entry is not an object: ${JSON.stringify(e)} \u2014 regenerate with /gen-router`);
+      unmet.push("malformed-entry");
+      continue;
+    }
+    const obj = e;
+    const name = typeof obj.name === "string" ? obj.name : void 0;
+    if (!name) {
+      reasons.push(`routing.json entry missing a string "name": ${JSON.stringify(e)}`);
+      unmet.push("malformed-entry");
+      continue;
+    }
+    routedEntries.push({
+      name,
+      model: typeof obj.model === "string" ? obj.model : void 0,
+      kb_domains: Array.isArray(obj.kb_domains) ? obj.kb_domains.filter((x) => typeof x === "string") : void 0
+    });
+  }
+  const routedNames = routedEntries.map((e) => e.name);
   const rosterSet = new Set(rosterNames);
   const routedCounts = /* @__PURE__ */ new Map();
-  for (const name of routed) routedCounts.set(name, (routedCounts.get(name) ?? 0) + 1);
+  for (const name of routedNames) routedCounts.set(name, (routedCounts.get(name) ?? 0) + 1);
   for (const name of rosterSet) {
     const count = routedCounts.get(name) ?? 0;
     if (count === 0) {
@@ -21524,6 +21732,19 @@ function gRouterCoverage(ctx) {
     if (!rosterSet.has(name)) {
       reasons.push(`routing references unknown agent: ${name}`);
       unmet.push(`extra:${name}`);
+    }
+  }
+  for (const e of routedEntries) {
+    if (!rosterSet.has(e.name) || degraded.has(e.name)) continue;
+    const agentModel = rosterModel.get(e.name);
+    if (e.model === void 0) {
+      reasons.push(`routing entry for "${e.name}" is missing "model" \u2014 regenerate with /gen-router`);
+      unmet.push(`missing-model:${e.name}`);
+    } else if (e.model !== agentModel) {
+      reasons.push(
+        `routing model drift for "${e.name}": routing says "${e.model}" but agent frontmatter declares "${agentModel}"`
+      );
+      unmet.push(`model-drift:${e.name}`);
     }
   }
   if (declaredDomains.length > 0) {
@@ -21545,7 +21766,7 @@ function gRouterCoverage(ctx) {
   }
   if (unmet.length === 0) {
     return pass(gate, [
-      `bijection holds over ${rosterNames.length} agents`,
+      `bijection holds over ${rosterNames.length} agents (models + descriptions validated, no drift)`,
       kbPresent && declaredDomains.length > 0 ? `all ${declaredDomains.length} declared kb_domains resolve (referential integrity)` : "no kb_domains to verify"
     ]);
   }
@@ -22237,7 +22458,9 @@ var GATE_DOCS = {
     handoff: "build-report",
     blocks_when: [
       "any acceptance criterion in DEFINE is not satisfied by the build results",
-      "the build certifies a criterion DEFINE never declared (phantom/set-drift)"
+      "the build certifies a criterion DEFINE never declared (phantom/set-drift)",
+      "no human approval recorded via `spin approve`",
+      "an unreconciled spec-drift: a build result with corrected_spec:true not yet reconciled (unmet: spec-drift:<AC>)"
     ],
     flags: []
   },
@@ -22370,109 +22593,6 @@ function readBuildTaskSidecarRefs(dir) {
     }
   }
   return refs;
-}
-
-// src/core/handoff/describe.ts
-function unwrap(t) {
-  let core = t;
-  let required = true;
-  let def;
-  for (; ; ) {
-    const name = core._def?.typeName;
-    if (name === "ZodOptional") {
-      required = false;
-      core = core._def.innerType;
-    } else if (name === "ZodDefault") {
-      required = false;
-      const d = core._def;
-      try {
-        def = d.defaultValue();
-      } catch {
-      }
-      core = d.innerType;
-    } else if (name === "ZodNullable") {
-      core = core._def.innerType;
-    } else {
-      break;
-    }
-  }
-  return { core, required, default: def };
-}
-function stringConstraints(t) {
-  const checks = t._def.checks ?? [];
-  const out = [];
-  for (const c of checks) {
-    if (c.kind === "regex" && c.regex) out.push(`matches ${c.regex.toString()}`);
-    else if (c.kind === "min") out.push(`min length ${c.value}`);
-    else if (c.kind === "max") out.push(`max length ${c.value}`);
-    else if (c.kind === "email") out.push("email");
-    else out.push(c.kind);
-  }
-  return out;
-}
-function numberConstraints(t) {
-  const checks = t._def.checks ?? [];
-  return checks.map((c) => c.value !== void 0 ? `${c.kind} ${c.value}` : c.kind);
-}
-function describeCore(core) {
-  const name = core._def?.typeName;
-  switch (name) {
-    case "ZodString": {
-      const constraints = stringConstraints(core);
-      return { type: "string", ...constraints.length ? { constraints } : {} };
-    }
-    case "ZodNumber": {
-      const constraints = numberConstraints(core);
-      return { type: "number", ...constraints.length ? { constraints } : {} };
-    }
-    case "ZodBoolean":
-      return { type: "boolean" };
-    case "ZodEnum":
-      return { type: "enum", enumValues: core._def.values };
-    case "ZodArray": {
-      const adef = core._def;
-      const el = unwrap(adef.type);
-      const elDesc = describeCore(el.core);
-      const constraints = [];
-      if (adef.minLength) constraints.push(`min ${adef.minLength.value} item(s)`);
-      if (adef.maxLength) constraints.push(`max ${adef.maxLength.value} item(s)`);
-      for (const c of elDesc.constraints ?? []) constraints.push(`items ${c}`);
-      if (elDesc.enumValues) constraints.push(`items in ${JSON.stringify(elDesc.enumValues)}`);
-      return {
-        type: `array<${elDesc.type}>`,
-        ...constraints.length ? { constraints } : {},
-        ...elDesc.fields ? { fields: elDesc.fields } : {}
-      };
-    }
-    case "ZodObject":
-      return { type: "object", fields: describeObject(core) };
-    default:
-      return { type: name ? name.replace(/^Zod/, "").toLowerCase() : "unknown" };
-  }
-}
-function describeObject(obj) {
-  const shape = obj.shape;
-  return Object.entries(shape).map(([fname, ztype]) => {
-    const u = unwrap(ztype);
-    const core = describeCore(u.core);
-    return {
-      name: fname,
-      type: core.type,
-      required: u.required,
-      ...core.constraints ? { constraints: core.constraints } : {},
-      ...core.enumValues ? { enumValues: core.enumValues } : {},
-      ...u.default !== void 0 ? { default: u.default } : {},
-      ...core.fields ? { fields: core.fields } : {}
-    };
-  });
-}
-function describeHandoff(id) {
-  if (!isHandoffId(id)) return null;
-  const schema = HANDOFF_SCHEMAS[id];
-  return { id, fields: describeObject(schema) };
-}
-function listHandoffIds() {
-  return Object.keys(HANDOFF_SCHEMAS).sort();
 }
 
 // src/core/eval/eval.ts
@@ -23260,6 +23380,7 @@ function completeHandler(root, id, opts) {
       });
     }
   }
+  let unknownKeys;
   if (artifact.handoff) {
     if (!opts.handoff) {
       return usage(`artifact "${id}" requires --handoff <file.json> (schema: ${artifact.handoff})`);
@@ -23274,6 +23395,7 @@ function completeHandler(root, id, opts) {
         errors: check.errors
       });
     }
+    unknownKeys = check.unknown_keys;
     const state2 = loadRunState(root);
     const dest = path14.join(handoffDir(root, state2.feature), `${id}.json`);
     atomicWrite(dest, JSON.stringify(check.data, null, 2) + "\n");
@@ -23303,7 +23425,11 @@ function completeHandler(root, id, opts) {
     }
   }
   const state = markComplete(root, id, reportedUsage);
-  return ok({ completed: id, runState: state });
+  return ok({
+    completed: id,
+    runState: state,
+    ...unknownKeys && unknownKeys.length > 0 ? { unknown_keys: unknownKeys } : {}
+  });
 }
 function validateHandler(root, idOrPath) {
   if (!runStateExists(root)) return usage('no run state \u2014 run "spin init" first');

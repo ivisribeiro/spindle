@@ -1,0 +1,7 @@
+{
+  "id": "G_SHIP-spec-drift-reconciled-pass",
+  "gate": "G_SHIP",
+  "expect": "pass",
+  "args": {},
+  "note": "the build CORRECTED AC-1 but DEFINE was reconciled (reconciled: true) — an acknowledged correction ships; the loop converges"
+}

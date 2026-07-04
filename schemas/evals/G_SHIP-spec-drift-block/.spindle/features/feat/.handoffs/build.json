@@ -1,0 +1,12 @@
+{
+  "feature": "feat",
+  "results": [
+    {
+      "criterion": "AC-1",
+      "status": "passed",
+      "corrected_spec": true,
+      "correction": "CRC 29B1 not 1D3D"
+    }
+  ],
+  "files_written": []
+}
