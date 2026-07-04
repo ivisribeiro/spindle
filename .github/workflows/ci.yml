@@ -25,6 +25,8 @@ jobs:
         run: |
           npm run guard
           npm run guard:authorship
+      - name: Inventory check (distribution counts match source)
+        run: npm run inventory:check
       - name: Test
         run: npm test
       - name: Eval corpus (gate-regression replay over the bundled dist)

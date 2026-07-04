@@ -127,6 +127,33 @@ describe('CLI handler exit-code ABI', () => {
     expect(s).toContain('G_NOPE');
   });
 
+  it('spin schema validate rejects an unenforceable gate hook key (would be inert)', async () => {
+    await R('init', '--schema', 'sdd', '--feature', 'hk');
+    // `after_a` is not an enforceable hook form and `before_ghost` names no artifact;
+    // both would silently never fire. The gate VALUES are real, so only the KEY check trips.
+    write(
+      root,
+      '.spindle/schema.yaml',
+      'name: t\nversion: 1\nartifacts:\n  - id: a\n    generates: A.md\n    requires: []\ngates:\n  after_a: G_DEFINE\n  before_ghost: G_SHIP\n'
+    );
+    const r = await R('schema', 'validate');
+    expect(r.code).toBe(1);
+    const s = JSON.stringify(r.json);
+    expect(s).toContain('after_a');
+    expect(s).toContain('before_ghost');
+    expect(s).toContain('enforceable');
+  });
+
+  it('spin complete rejects a stray --handoff on a handoff-less artifact (exit 2)', async () => {
+    await R('init', '--schema', 'sdd', '--feature', 'sh');
+    const h = writeJson(root, 'work/x.json', { anything: true });
+    // brainstorm declares no handoff schema — a --handoff would never be validated, so
+    // passing one is a usage error (a bug in the invocation), not a silently-ignored flag.
+    const r = await R('complete', 'brainstorm', '--handoff', h);
+    expect(r.code).toBe(2);
+    expect(JSON.stringify(r.json)).toContain('no handoff schema');
+  });
+
   it('spin init rejects an unsafe feature slug (exit 2)', async () => {
     expect((await R('init', '--schema', 'sdd', '--feature', '../../escape')).code).toBe(2);
   });

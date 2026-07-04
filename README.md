@@ -4,9 +4,11 @@
 
 > **The idea in one line:** separate the thing that *decides* from the thing that *generates*. Claude writes; a deterministic TypeScript CLI named `spin` decides what "done" means — and `spin` **never calls a model** (a CI grep-guard fails the build if `src/` so much as references `fetch(`). "Done" becomes a checkable verdict over files, evidence, and acceptance-criterion identity — returned as an exit code — not a self-marked checkbox.
 
+See [STATUS.md](STATUS.md) for the current verified test count, what works today, and known limitations, stated without marketing language.
+
 ### Why it exists / what makes it different
 
-Most spec-driven AI tools have one blind spot: when every check is green, you assume the spec is right. Spindle is built to make that assumption *testable*. Versus a file-existence model (OpenSpec):
+Most spec-driven AI tools have one blind spot: when every check is green, you assume the spec is right. Spindle is built to make that assumption *testable*. Versus a plain file-existence completion model:
 
 - **"Done" can be a content verdict, not just a file existing** — for any artifact whose schema declares a `handoff:`, `spin complete` refuses to mark it done unless a Zod sidecar passes, and `G_BUILD` set-diffs every acceptance criterion. It also enforces criteria-set consistency *both ways* — blocking a **phantom** AC the build certifies that DEFINE never declared (an ID-set drift the spine catches with no disclosure; note this is *not* the same as a wrong-*value* drift, which is `spec-drift`'s job) — and, *when* a `passed` criterion cites a test file via `verified_by`, requires that file to exist (opt-in, existence-only — it doesn't make evidence mandatory).
 - **The deterministic spine is a *verifiable property*** — the no-model invariant is enforced by a CI guard that fails the build if `src/` references an LLM SDK (`@anthropic`, `openai`), a model-call pattern (`api.anthropic.com`, `claude -p`), `fetch(`, or a tokenizer/pricing symbol. It is a deny-list of model/network-call tells, not a proof of zero egress.
@@ -450,13 +452,9 @@ repair. Full write-up: [`docs/DOGFOOD_LOG_pix-brcode.md`](docs/DOGFOOD_LOG_pix-b
 
 ## Attribution
 
-The typed gates (`G_DEFINE` / `G_DESIGN` / `G_BUILD` / `G_SHIP` / …), the exit-code ABI (`0` pass / `1` block / `2` usage / `3` crash), the handoff sidecar contracts, the model-routing policy, and the hard seam (`spin` never calls a model) are Spindle originals — see [CREDITS.md](./CREDITS.md) for the full provenance record.
+The typed gates (`G_DEFINE` / `G_DESIGN` / `G_BUILD` / `G_SHIP` / …), the exit-code ABI (`0` pass / `1` block / `2` usage / `3` crash), the handoff sidecar contracts, the model-routing policy, and the hard seam (`spin` never calls a model) are Spindle originals.
 
-What was genuinely adapted from upstream projects:
-
-- **[AgentSpec](https://github.com/agentspec)** — the 5-phase SDD workflow shape (Brainstorm → Define → Design → Build → Ship), the specialist agent roster, and the knowledge-base domains. Routed and gated by Spindle's harness; adapted files carry an `origin:` stamp.
-- **[OpenSpec](https://openspec.dev)** — the artifact-graph spine: Kahn topological ordering, schema validation, cycle detection, and CLI build mechanics. Re-implemented in TypeScript in `src/core/artifact-graph/`.
-- **[ECC](https://github.com/ECC)** — the original harness-pattern doctrine (adversarial gate, bounded loop, parallel fan-out, model routing) that inspired the four Spindle skills of the same names. Those skills have since been re-authored against concrete `src/` mechanisms with no ECC counterpart.
+Spindle's artifact-graph engine (Kahn ordering, schema validation, cycle detection, CLI build mechanics), its 5-phase SDD workflow shape, specialist agent roster, and knowledge-base domains were adapted from prior open-source work, and the harness-pattern doctrine behind the `adversarial-gate` / `bounded-loop` / `parallel-fanout` / `model-routing` skills traces to outside prior art as well. Full provenance — project names, licenses, and per-file `origin:` stamps — lives in one place: [CREDITS.md](./CREDITS.md).
 
 ---
 
