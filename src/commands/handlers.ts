@@ -27,7 +27,14 @@ import { Usage, type RunEvent } from '../core/run/run-state.schema.js';
 import { buildGateContext, runGate } from '../core/gates/gate-runner.js';
 import { checkHandoffFile, checkHandoffObject } from '../core/handoff/handoff-check.js';
 import { criteriaDiff } from '../core/validation/criteria-diff.js';
-import { validateSections, hasManifestTable, extractCriteriaIds } from '../core/validation/md-section-validator.js';
+import {
+  validateSections,
+  hasManifestTable,
+  extractCriteriaIds,
+  findDanglingReferences,
+  findInvalidUrls,
+} from '../core/validation/md-section-validator.js';
+import { computeDefineCoverage } from '../core/validation/define-coverage.js';
 import { route, listTaskKinds, type Budget } from '../core/model-route/policy.js';
 import { classifyTier, type TierSignals, type Risk, type Breadth } from '../core/model-route/tiers.js';
 import { aggregateUsageStats } from '../core/model-route/usage-stats.js';
@@ -714,9 +721,53 @@ export function validateHandler(root: string, idOrPath: string): HandlerResult {
     }
   }
 
+  // ---- advisory payload -------------------------------------------------
+  // Reported alongside the verdict but NEVER folded into `issues`, so the exit
+  // code is unchanged. Same contract `handoff-check` uses for `unknown_keys`:
+  // the JSON carries more than the verdict, the verdict stays narrow.
+  const warnings: string[] = [
+    ...findDanglingReferences(md).map((r) => `dangling cross-reference: "${r}"`),
+    ...findInvalidUrls(md).map((u) => `reference does not resolve to an http(s) URL: "${u}"`),
+  ];
+
+  // Resolve "is this the DEFINE artifact" for BOTH call forms — `spin validate define`
+  // (id) and `spin validate .spindle/features/<f>/DEFINE.md` (path, which is what the
+  // /define command actually runs). Keying only off the id would make the coverage
+  // report invisible in the real command flow.
+  const defineArtifact = graph.getArtifact('define');
+  const isDefineArtifact =
+    artifact?.handoff === 'define' ||
+    (defineArtifact?.handoff === 'define' &&
+      path.basename(mdPath) === path.basename(defineArtifact.generates));
+
+  let coverage: ReturnType<typeof computeDefineCoverage> | undefined;
+  if (isDefineArtifact) {
+    let criteria: string[] = [];
+    let openQuestions: string[] = [];
+    const sidecar = path.join(handoffDir(root, state.feature), 'define.json');
+    if (fs.existsSync(sidecar)) {
+      try {
+        const parsed = JSON.parse(fs.readFileSync(sidecar, 'utf-8')) as {
+          criteria?: string[];
+          open_questions?: string[];
+        };
+        criteria = parsed.criteria ?? [];
+        openQuestions = parsed.open_questions ?? [];
+      } catch {
+        warnings.push('define handoff sidecar is unreadable — coverage scored without it');
+      }
+    }
+    coverage = computeDefineCoverage({ markdown: md, criteria, openQuestions });
+  }
+
+  const advisory = {
+    ...(warnings.length > 0 ? { warnings } : {}),
+    ...(coverage ? { coverage } : {}),
+  };
+
   return issues.length === 0
-    ? ok({ valid: true, path: mdPath })
-    : blocked({ valid: false, path: mdPath, issues });
+    ? ok({ valid: true, path: mdPath, ...advisory })
+    : blocked({ valid: false, path: mdPath, issues, ...advisory });
 }
 
 export function gateHandler(root: string, gateId: string, args: Record<string, string>): HandlerResult {

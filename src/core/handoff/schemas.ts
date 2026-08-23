@@ -1,8 +1,29 @@
 import { z } from 'zod';
+import { DISCOVERY_BLOCK_IDS } from '../validation/define-coverage.js';
 
 // Typed worker-output contracts. `spin complete --handoff` validates a worker's
 // JSON sidecar against one of these BEFORE the artifact counts as done. This is
 // the seam that makes "the LLM self-marked it done" impossible.
+
+// Phase 0. The brainstorm artifact declares no `handoff:` in schema.yaml (it has no
+// blocking gate), so this schema is reached via standalone `spin handoff-check
+// brainstorm <file>` — not via `spin complete --handoff`.
+//
+// `blocks_covered` draws from the SAME closed set G_DEFINE scores against
+// (DISCOVERY_BLOCK_IDS), so a brainstorm that reports covering a block and a DEFINE
+// that fails to discuss it are measured on one vocabulary instead of two.
+export const BrainstormHandoff = z.object({
+  feature: z.string().min(1),
+  summary: z.string().min(1),
+  blocks_covered: z
+    // Zod needs a literal tuple; DISCOVERY_BLOCK_IDS stays the single source of truth
+    // (asserted in test/core/handoff/schemas.test.ts).
+    .array(z.enum(DISCOVERY_BLOCK_IDS as unknown as [string, ...string[]]))
+    .default([]),
+  key_themes: z.array(z.string()).default([]),
+  open_questions: z.array(z.string()).default([]),
+  recommended_next: z.string().default('define'),
+});
 
 export const DefineHandoff = z.object({
   feature: z.string().min(1),
@@ -220,6 +241,7 @@ export const AuditHandoff = z.object({
 
 // Registry: handoff id -> Zod schema. The schema.yaml `handoff:` field names one.
 export const HANDOFF_SCHEMAS = {
+  brainstorm: BrainstormHandoff,
   define: DefineHandoff,
   design: DesignHandoff,
   'build-task': BuildTaskHandoff,

@@ -35,6 +35,14 @@ The part nobody else wrote — the reason Spindle exists as a distinct product:
   specialist agent roster (`plugin/agents/`), the knowledge-base domains (`plugin/kb/`),
   and the data-engineering command surface. Routed and gated by Spindle's harness; files
   carry an `origin:` stamp where adapted.
+- **BoostPrompt** (© 2026 Airton Lira, MIT) — two deterministic scorers, re-implemented in
+  TypeScript on Spindle's side of the seam: the discovery coverage / decision-clarity /
+  readiness formulas in `src/core/validation/define-coverage.ts` (adapted from its
+  `PromptQualityEvaluator`), and the self-containment + reference-URL lints in
+  `src/core/validation/md-section-validator.ts` (adapted from its
+  `PromptArtifactValidator`). Its nine discovery blocks also shape the `/brainstorm`
+  interview doctrine. Only the model-free parts were taken — Spindle dispatches no
+  agents from the CLI, and adopted none of its LLM orchestration.
 - **ECC** (© 2026 Affaan Mustafa, MIT) — the original harness-pattern doctrine
   (adversarial gate, bounded loop, parallel fan-out, model routing) that inspired the
   four Spindle skills of the same names under `plugin/skills/`. Those skills have since

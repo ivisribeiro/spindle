@@ -35,6 +35,10 @@ export const GATE_DOCS: Record<string, GateDoc> = {
       'DEFINE.md missing on disk',
       'any required ## section absent or empty',
       'define handoff missing or invalid against the DefineHandoff schema',
+      'the ## Acceptance Criteria body still carries a placeholder token (TBD/TODO/FIXME/...) — always enforced',
+      'the handoff clarity is below config.clarity_floor (only when that floor is set)',
+      'the DETERMINISTIC discovery readiness is below config.coverage_floor (only when that floor is set) — ' +
+        'readiness is derived by the spine from DEFINE.md + the handoff, never self-reported',
     ],
     flags: [],
   },

@@ -1,0 +1,7 @@
+{
+  "id": "G_DEFINE-placeholder-block",
+  "gate": "G_DEFINE",
+  "expect": "block",
+  "args": {},
+  "note": "every section is present and the handoff is valid, but a criterion is still a stub (placeholder-criterion:tbd)"
+}

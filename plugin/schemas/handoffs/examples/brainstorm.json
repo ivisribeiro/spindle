@@ -1,0 +1,20 @@
+{
+  "feature": "supplier-portal",
+  "summary": "Explored the supplier onboarding problem space, its users, and the compliance constraints that shape scope.",
+  "blocks_covered": [
+    "problem",
+    "goals",
+    "users",
+    "scope",
+    "security",
+    "constraints"
+  ],
+  "key_themes": [
+    "suppliers abandon onboarding at the document-upload step",
+    "compliance requires an auditable trail of every submitted document"
+  ],
+  "open_questions": [
+    "Which document types must be retained, and for how long?"
+  ],
+  "recommended_next": "define"
+}

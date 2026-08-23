@@ -13741,8 +13741,8 @@ var require_pattern = __commonJS({
     }
     exports.endsWithSlashGlobStar = endsWithSlashGlobStar;
     function isAffectDepthOfReadingPattern(pattern) {
-      const basename3 = path15.basename(pattern);
-      return endsWithSlashGlobStar(pattern) || isStaticPattern(basename3);
+      const basename4 = path15.basename(pattern);
+      return endsWithSlashGlobStar(pattern) || isStaticPattern(basename4);
     }
     exports.isAffectDepthOfReadingPattern = isAffectDepthOfReadingPattern;
     function expandPatternsWithBraceExpansion(patterns) {
@@ -20470,6 +20470,12 @@ var ConfigBlock = external_exports.object({
   // clarity is below it (turns the recorded clarity number into a verdict). This
   // is a NEW policy knob, not a recovered legacy "12/15" threshold.
   clarity_floor: external_exports.number().min(0).max(1).optional(),
+  // Optional blocking floor (0..100) for the DETERMINISTIC discovery readiness
+  // score computed by src/core/validation/define-coverage.ts. UNSET by default
+  // (additive, same convention as clarity_floor / require_verified_by). Where
+  // clarity_floor gates on a number the WORKER wrote, this one gates on a number
+  // the spine derives from DEFINE.md + the handoff — so it cannot be self-reported.
+  coverage_floor: external_exports.number().min(0).max(100).optional(),
   // Tests at build: when true, G_BUILD requires every PASSED acceptance criterion to cite
   // a `verified_by` (a test/check). UNSET by default (additive). The spine reads the
   // CI-produced `verified_by_result`; it never runs the verifier.
@@ -20820,6 +20826,131 @@ function extractCriteriaIds(markdown, prefix) {
   }
   return Array.from(found).sort();
 }
+var PLACEHOLDER_PATTERNS = [
+  /\bTBD\b/gi,
+  /\bTODO\b/gi,
+  /\bFIXME\b/gi,
+  /\bXXX\b/g,
+  /\?{3,}/g,
+  /\blorem ipsum\b/gi,
+  /\bto be (defined|determined|decided)\b/gi,
+  /\ba definir\b/gi,
+  /\bpreencher\b/gi
+];
+function findPlaceholders(text) {
+  const found = /* @__PURE__ */ new Set();
+  for (const pattern of PLACEHOLDER_PATTERNS) {
+    for (const match of text.matchAll(pattern)) found.add(match[0].toLowerCase());
+  }
+  return Array.from(found).sort();
+}
+var DANGLING_REFERENCE_PATTERNS = [
+  /\bas (described|shown|defined|mentioned|stated) (above|below|earlier|previously)\b/gi,
+  /\bsee (the )?(document|section|prompt|spec|scope)? ?(above|below)\b/gi,
+  /\bthe (document|prompt|scope|spec) (above|below)\b/gi,
+  /\b(documento|prompt|escopo) (acima|abaixo)\b/gi,
+  /\bconforme (acima|abaixo)\b/gi
+];
+function findDanglingReferences(markdown) {
+  const found = /* @__PURE__ */ new Set();
+  for (const pattern of DANGLING_REFERENCE_PATTERNS) {
+    for (const match of markdown.matchAll(pattern)) found.add(match[0].toLowerCase());
+  }
+  return Array.from(found).sort();
+}
+function isResolvableHttpUrl(value) {
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") && url.hostname.length > 0;
+  } catch {
+    return false;
+  }
+}
+function findInvalidUrls(markdown) {
+  const candidates = /* @__PURE__ */ new Set();
+  for (const match of markdown.matchAll(/^\s*URL:\s*(\S+)\s*$/gim)) candidates.add(match[1]);
+  for (const match of markdown.matchAll(/https?:\/\/\S*/g)) {
+    candidates.add(match[0].replace(/[).,;\]]+$/, ""));
+  }
+  return Array.from(candidates).filter((c) => !isResolvableHttpUrl(c)).sort();
+}
+
+// src/core/validation/define-coverage.ts
+var DISCOVERY_BLOCKS = [
+  {
+    id: "problem",
+    label: "problem & context",
+    terms: [/\bproblem/, /\bpain\b/, /\bmotivation/, /\bimpact/, /\bproblema/, /\bdor(es)?\b/, /\bmotivac/, /\bimpacto/]
+  },
+  {
+    id: "goals",
+    label: "goals & success signals",
+    terms: [/\bgoal/, /\bobjective/, /\bsuccess/, /\bmetric/, /\bkpi\b/, /\boutcome/, /\bobjetivo/, /\bmeta(s)?\b/, /\bsucesso/, /\bmetrica/]
+  },
+  {
+    id: "users",
+    label: "users & stakeholders",
+    terms: [/\buser/, /\bpersona/, /\bstakeholder/, /\boperator/, /\baudience/, /\busuario/, /\bator(es)?\b/, /\bpublico/]
+  },
+  {
+    id: "scope",
+    label: "functional scope",
+    terms: [/\bscope\b/, /\bfeature/, /\bbehaviou?r/, /\bcapabilit/, /\bworkflow/, /\bescopo/, /\bfuncionalidade/, /\bregra(s)?\b/]
+  },
+  {
+    id: "nfr",
+    label: "non-functional requirements",
+    terms: [/\bperformance/, /\blatenc/, /\bthroughput/, /\bcost(s)?\b/, /\bscalab/, /\bavailabilit/, /\bresilien/, /\bsla\b/, /\bdesempenho/, /\bcusto/, /\bescalab/, /\bdisponibilidade/]
+  },
+  {
+    id: "architecture",
+    label: "architecture & data",
+    terms: [/\barchitect/, /\bcomponent/, /\bmodule/, /\bapi\b/, /\bendpoint/, /\bschema/, /\bstorage/, /\bpersist/, /\bqueue/, /\bcache/, /\barquitetur/, /\bcomponente/, /\bmodulo/, /\bbanco de dados/]
+  },
+  {
+    id: "security",
+    label: "security & compliance",
+    terms: [/\bsecurity\b/, /\bauth/, /\bpermission/, /\bsecret(s)?\b/, /\bcredential/, /\bencrypt/, /\bprivacy/, /\bcomplian/, /\bpii\b/, /\blgpd\b/, /\bgdpr\b/, /\bseguranca/, /\bautentic/, /\bautoriz/, /\bcriptograf/, /\bprivacidade/]
+  },
+  {
+    id: "delivery",
+    label: "delivery & operation",
+    terms: [/\bdeploy/, /\brollout/, /\brollback/, /\bci\b/, /\bcd\b/, /\bmigrat/, /\bmonitor/, /\bobservab/, /\btest/, /\benvironment/, /\bentrega/, /\bimplanta/, /\bteste(s)?\b/, /\bambiente/]
+  },
+  {
+    id: "constraints",
+    label: "constraints, assumptions & risks",
+    terms: [/\bconstraint/, /\bassumption/, /\brisk(s)?\b/, /\btrade-?off/, /\blimitation/, /\bnon-goal/, /\bout of scope\b/, /\bdependenc/, /\brestric/, /\bpremissa/, /\brisco(s)?\b/, /\blimitac/]
+  }
+];
+var DISCOVERY_BLOCK_IDS = DISCOVERY_BLOCKS.map((b) => b.id);
+var CRITERIA_SATURATION = 5;
+var EVIDENCE_CEILING = 10;
+function normalizeText(value) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+function computeDefineCoverage(input) {
+  const text = normalizeText(input.markdown);
+  const covered = [];
+  const uncovered = [];
+  for (const block2 of DISCOVERY_BLOCKS) {
+    (block2.terms.some((t) => t.test(text)) ? covered : uncovered).push(block2.id);
+  }
+  const coverage = Math.round(covered.length / DISCOVERY_BLOCKS.length * 100);
+  const evidence = Math.min(EVIDENCE_CEILING, input.criteria.length + covered.length);
+  const uncertainty = input.openQuestions.length;
+  const decision_clarity = clamp(
+    Math.round(100 * evidence / (EVIDENCE_CEILING + 2 * uncertainty)),
+    0,
+    100
+  );
+  const criteriaTerm = Math.min(input.criteria.length / CRITERIA_SATURATION, 1) * 100;
+  const readiness = Math.round(0.5 * coverage + 0.35 * decision_clarity + 0.15 * criteriaTerm);
+  return { coverage, decision_clarity, readiness, covered, uncovered };
+}
 
 // src/core/validation/criteria-diff.ts
 function criteriaDiff(defined, passed) {
@@ -20835,6 +20966,14 @@ function criteriaDiff(defined, passed) {
 import * as fs3 from "node:fs";
 
 // src/core/handoff/schemas.ts
+var BrainstormHandoff = external_exports.object({
+  feature: external_exports.string().min(1),
+  summary: external_exports.string().min(1),
+  blocks_covered: external_exports.array(external_exports.enum(DISCOVERY_BLOCK_IDS)).default([]),
+  key_themes: external_exports.array(external_exports.string()).default([]),
+  open_questions: external_exports.array(external_exports.string()).default([]),
+  recommended_next: external_exports.string().default("define")
+});
 var DefineHandoff = external_exports.object({
   feature: external_exports.string().min(1),
   clarity: external_exports.number().min(0).max(1),
@@ -21009,6 +21148,7 @@ var AuditHandoff = external_exports.object({
   }).optional()
 });
 var HANDOFF_SCHEMAS = {
+  brainstorm: BrainstormHandoff,
   define: DefineHandoff,
   design: DesignHandoff,
   "build-task": BuildTaskHandoff,
@@ -21249,7 +21389,8 @@ function artifactMdPath(ctx, id) {
   if (!artifact) return null;
   return path3.join(ctx.featureDir, artifact.generates);
 }
-var REQUIRED_DEFINE_SECTIONS = ["Why", "What", "Acceptance Criteria"];
+var CRITERIA_SECTION = "Acceptance Criteria";
+var REQUIRED_DEFINE_SECTIONS = ["Why", "What", CRITERIA_SECTION];
 var REQUIRED_DESIGN_SECTIONS = ["Overview", "File Manifest", "Decisions"];
 function gDefine(ctx) {
   const gate = "G_DEFINE";
@@ -21265,6 +21406,16 @@ function gDefine(ctx) {
     reasons.push(`section "${issue.section}" ${issue.problem}`);
     unmet.push(`section:${issue.section}`);
   }
+  const criteriaBody = parseSections(md).find(
+    (sec) => sec.title.trim().toLowerCase() === CRITERIA_SECTION.toLowerCase()
+  )?.body;
+  if (criteriaBody) {
+    for (const token of findPlaceholders(criteriaBody)) {
+      reasons.push(`"${CRITERIA_SECTION}" still carries the placeholder "${token}"`);
+      unmet.push(`placeholder-criterion:${token}`);
+    }
+  }
+  let coverage = null;
   const hPath = handoffPath(ctx, "define");
   if (!hPath) {
     reasons.push("no handoff dir configured");
@@ -21276,14 +21427,29 @@ function gDefine(ctx) {
       unmet.push("handoff:define");
     } else {
       const floor = ctx.graph?.getSchema().config?.clarity_floor;
-      const clarity = check.data.clarity;
-      if (typeof floor === "number" && typeof clarity === "number" && clarity < floor) {
-        reasons.push(`clarity ${clarity} is below the configured floor ${floor}`);
+      const data = check.data;
+      if (typeof floor === "number" && typeof data.clarity === "number" && data.clarity < floor) {
+        reasons.push(`clarity ${data.clarity} is below the configured floor ${floor}`);
         unmet.push("clarity-floor");
+      }
+      coverage = computeDefineCoverage({
+        markdown: md,
+        criteria: data.criteria ?? [],
+        openQuestions: data.open_questions ?? []
+      });
+      const coverageFloor = ctx.graph?.getSchema().config?.coverage_floor;
+      if (typeof coverageFloor === "number" && coverage.readiness < coverageFloor) {
+        reasons.push(
+          `discovery readiness ${coverage.readiness} is below the configured floor ${coverageFloor} (coverage ${coverage.coverage}, decision clarity ${coverage.decision_clarity})`
+        );
+        unmet.push("coverage-floor");
+        for (const blockId of coverage.uncovered) unmet.push(`coverage-block:${blockId}`);
       }
     }
   }
-  return unmet.length === 0 ? pass(gate, ["define complete"]) : block(gate, reasons, unmet);
+  if (unmet.length > 0) return block(gate, reasons, unmet);
+  const summary = coverage ? `define complete (readiness ${coverage.readiness}, coverage ${coverage.coverage}, decision clarity ${coverage.decision_clarity})` : "define complete";
+  return pass(gate, [summary]);
 }
 function gDesign(ctx) {
   const gate = "G_DESIGN";
@@ -22413,7 +22579,10 @@ var GATE_DOCS = {
     blocks_when: [
       "DEFINE.md missing on disk",
       "any required ## section absent or empty",
-      "define handoff missing or invalid against the DefineHandoff schema"
+      "define handoff missing or invalid against the DefineHandoff schema",
+      "the ## Acceptance Criteria body still carries a placeholder token (TBD/TODO/FIXME/...) \u2014 always enforced",
+      "the handoff clarity is below config.clarity_floor (only when that floor is set)",
+      "the DETERMINISTIC discovery readiness is below config.coverage_floor (only when that floor is set) \u2014 readiness is derived by the spine from DEFINE.md + the handoff, never self-reported"
     ],
     flags: []
   },
@@ -23462,7 +23631,33 @@ function validateHandler(root, idOrPath) {
       issues.push(`no ${validateSpec.criteria_ids_prefix}-N criteria IDs found`);
     }
   }
-  return issues.length === 0 ? ok({ valid: true, path: mdPath }) : blocked({ valid: false, path: mdPath, issues });
+  const warnings = [
+    ...findDanglingReferences(md).map((r) => `dangling cross-reference: "${r}"`),
+    ...findInvalidUrls(md).map((u) => `reference does not resolve to an http(s) URL: "${u}"`)
+  ];
+  const defineArtifact = graph.getArtifact("define");
+  const isDefineArtifact = artifact?.handoff === "define" || defineArtifact?.handoff === "define" && path14.basename(mdPath) === path14.basename(defineArtifact.generates);
+  let coverage;
+  if (isDefineArtifact) {
+    let criteria = [];
+    let openQuestions = [];
+    const sidecar = path14.join(handoffDir(root, state.feature), "define.json");
+    if (fs18.existsSync(sidecar)) {
+      try {
+        const parsed = JSON.parse(fs18.readFileSync(sidecar, "utf-8"));
+        criteria = parsed.criteria ?? [];
+        openQuestions = parsed.open_questions ?? [];
+      } catch {
+        warnings.push("define handoff sidecar is unreadable \u2014 coverage scored without it");
+      }
+    }
+    coverage = computeDefineCoverage({ markdown: md, criteria, openQuestions });
+  }
+  const advisory = {
+    ...warnings.length > 0 ? { warnings } : {},
+    ...coverage ? { coverage } : {}
+  };
+  return issues.length === 0 ? ok({ valid: true, path: mdPath, ...advisory }) : blocked({ valid: false, path: mdPath, issues, ...advisory });
 }
 function gateHandler(root, gateId, args) {
   if (!isGateId(gateId)) {

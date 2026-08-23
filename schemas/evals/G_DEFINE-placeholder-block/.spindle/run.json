@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "schema": "sdd",
+  "feature": "feat",
+  "completed": [],
+  "retries": {},
+  "gates": {},
+  "events": [],
+  "approval": null,
+  "createdAt": "2026-06-22T00:00:00.000Z",
+  "updatedAt": "2026-06-22T00:00:00.000Z"
+}

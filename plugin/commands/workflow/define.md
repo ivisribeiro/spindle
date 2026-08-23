@@ -58,6 +58,13 @@ The **define-worker** must:
 spin validate .spindle/features/<feature>/DEFINE.md
 ```
 
+The JSON carries two **advisory** fields alongside the verdict. Neither changes the exit code — read them, do not branch on them:
+
+- `coverage` — the deterministic discovery score (`readiness`, `coverage`, `decision_clarity`, `covered[]`, `uncovered[]`). Computed by the spine from DEFINE.md plus the handoff, so unlike the handoff's own `clarity` field it is not the worker's opinion of its own work.
+- `warnings[]` — dangling cross-references ("as described above" resolves to nothing for a worker reading this artifact alone) and reference tokens that are not real URLs.
+
+Surface `readiness` and any `uncovered[]` blocks to the user before moving on. A low score is not a failure here — it is the honest read on how much of the problem space DEFINE actually touched, and the user decides whether that is enough.
+
 If exit code is `1`, the artifact has structural issues (missing sections, malformed `AC-n` ids). Enter the bounded fix loop:
 
 ```bash
@@ -86,6 +93,12 @@ spin gate G_DEFINE
 ```
 
 **exit 1 — BLOCKED:** Surface `reasons` and `unmet` to the user. Do **not** advance to `/design`. The user must resolve the blockers (edit DEFINE.md or the handoff sidecar) and re-run `/define`.
+
+Three unmet shapes are worth translating for the user rather than echoing raw:
+
+- `placeholder-criterion:<token>` — an acceptance criterion is still a stub (`AC-1: TBD`). Always enforced: an unwritten criterion cannot be diffed at `G_BUILD`, so it would surface as a phantom pass later. Re-dispatch the worker to write the real criterion.
+- `coverage-floor` + `coverage-block:<id>` — only when the schema sets `config.coverage_floor`. The DEFINE does not discuss enough of the discovery blocks named in the `coverage-block:` entries. Fix by writing the missing dimensions, never by lowering the floor mid-run.
+- `clarity-floor` — only when the schema sets `config.clarity_floor`; this one reads the worker's self-reported number.
 
 **exit 0 — PASS:** Proceed to Step 7.
 

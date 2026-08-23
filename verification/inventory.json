@@ -94,9 +94,10 @@
     ]
   },
   "handoffSchemas": {
-    "count": 10,
+    "count": 11,
     "ids": [
       "audit",
+      "brainstorm",
       "build-report",
       "build-task",
       "claim",

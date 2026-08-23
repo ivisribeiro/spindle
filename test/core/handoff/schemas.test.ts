@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { checkHandoffObject } from '../../../src/core/handoff/handoff-check.js';
+import { DISCOVERY_BLOCK_IDS } from '../../../src/core/validation/define-coverage.js';
 
 describe('handoff contracts', () => {
   it('accepts a valid define handoff', () => {
@@ -190,5 +191,32 @@ describe('handoff contracts', () => {
     const r = checkHandoffObject('define', { feature: 'auth', clarity: 0.9, criteria: [], bogus: true });
     expect(r.ok).toBe(false);
     expect(r).not.toHaveProperty('unknown_keys');
+  });
+
+  it('accepts a valid brainstorm handoff', () => {
+    const r = checkHandoffObject('brainstorm', {
+      feature: 'auth',
+      summary: 'Explored the login problem space.',
+      blocks_covered: ['problem', 'users', 'security'],
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('rejects a brainstorm block id outside the closed discovery set', () => {
+    const r = checkHandoffObject('brainstorm', {
+      feature: 'auth',
+      summary: 'x',
+      blocks_covered: ['vibes'],
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  it('accepts every id the coverage scorer knows — one vocabulary, not two', () => {
+    const r = checkHandoffObject('brainstorm', {
+      feature: 'auth',
+      summary: 'x',
+      blocks_covered: [...DISCOVERY_BLOCK_IDS],
+    });
+    expect(r.ok).toBe(true);
   });
 });

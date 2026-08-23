@@ -127,7 +127,7 @@ between `src/`+`schemas/` and `plugin/`.
 | `spin complete <id> [--handoff f.json]` | validate the handoff against the artifact's schema, THEN mark complete (exit 1 if invalid) |
 | `spin approve [--by <name>]` | record human sign-off (required by `G_SHIP`). REFUSES unless stdin is an interactive TTY — an automated agent cannot approve. No bypass flag |
 | `spin invalidate <id>` | after an `/iterate` edit: drop `<id>` + its downstream closure from the ledger and void ALL gate verdicts + approval, so no stale-green survives |
-| `spin validate <id\|path>` | structural checks (md sections / manifest table / criteria IDs); exit 0/1 |
+| `spin validate <id\|path>` | structural checks (md sections / manifest table / criteria IDs); exit 0/1. The JSON also carries ADVISORY fields that never affect the exit code (same contract as `handoff-check`'s `unknown_keys`): `warnings[]` naming dangling cross-references ("as described above" — an artifact a worker reads alone cannot resolve them) and reference tokens that don't resolve to an http(s) URL; plus, for the `define` artifact, `coverage:{coverage,decision_clarity,readiness,covered[],uncovered[]}` — the deterministic discovery score |
 | `spin gate <gateId> [--agents d] [--routing f] [--kb d] [--findings f]` | run a named gate; exit 0 pass / 1 BLOCK with `{gate,passed,reasons,unmet}`. `--kb` (default `plugin/kb`) backs G_ROUTER_COVERAGE's kb_domains referential check |
 | `spin diff-criteria --define f --build f` | set-diff DEFINE criteria vs BUILD passed -> `unmet[]` |
 | `spin handoff-check <schemaId> <file.json>` | standalone handoff validation. Exit code is unaffected, but the JSON also carries an advisory `unknown_keys: [...]` (omitted when empty) naming top-level input keys the schema's non-strict object silently stripped — e.g. a typo like `files_writen` — with array-of-object fields (`results[]`/`findings[]`/`manifest[]`) reported one level deep as `field[i].key` |
@@ -151,7 +151,15 @@ between `src/`+`schemas/` and `plugin/`.
 ## 5. Gates, handoffs, and route kinds (the closed sets)
 
 **Gate ids** (`spin gate <id>`):
-`G_DEFINE` (before /design), `G_DESIGN` (before /build), `G_BUILD` (before
+`G_DEFINE` (before /design — sections + define handoff, PLUS: a placeholder token
+(`TBD`/`TODO`/`FIXME`/…) left inside the `## Acceptance Criteria` body always blocks
+(`placeholder-criterion:<token>`) — an unwritten criterion cannot be diffed at G_BUILD;
+and when `config.coverage_floor` is set, a deterministic discovery readiness below it
+blocks with `coverage-floor` + one `coverage-block:<id>` per uncovered block. That
+readiness is computed BY THE SPINE from DEFINE.md + the handoff
+(`src/core/validation/define-coverage.ts`), which is what distinguishes it from
+`config.clarity_floor` — that one gates on a `clarity` number the WORKER wrote about its
+own output. Both floors are UNSET by default, so both are additive), `G_DESIGN` (before /build), `G_BUILD` (before
 /ship — every manifest file exists on disk + criteria-diff empty + BUILD_REPORT
 exists + no passed criterion's CI `verified_by_result` is `failed` + (when
 `config.require_verified_by`) every passed criterion cites a verifier; the spine
@@ -179,7 +187,9 @@ split; (c) a blocking gap in `gaps[]` that no proposed task addresses; reads
 
 **Handoff schema ids** (the `handoff:` field / `spin complete --handoff` /
 `spin handoff-check`):
-`define`, `design`, `build-task`, `build-report`, `finding`, `claim`,
+`brainstorm` (Phase 0 discovery; its `blocks_covered[]` draws from the SAME closed set
+G_DEFINE scores against — `DISCOVERY_BLOCK_IDS` — so the two phases share one
+vocabulary), `define`, `design`, `build-task`, `build-report`, `finding`, `claim`,
 `migration-plan`, `claudemd-section`, `kb-concept` (carries optional `decoding_note`
 for the E-1 honesty rule), `audit`.
 

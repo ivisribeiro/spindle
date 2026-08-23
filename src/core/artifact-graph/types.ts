@@ -43,6 +43,12 @@ export const ConfigBlock = z
     // clarity is below it (turns the recorded clarity number into a verdict). This
     // is a NEW policy knob, not a recovered legacy "12/15" threshold.
     clarity_floor: z.number().min(0).max(1).optional(),
+    // Optional blocking floor (0..100) for the DETERMINISTIC discovery readiness
+    // score computed by src/core/validation/define-coverage.ts. UNSET by default
+    // (additive, same convention as clarity_floor / require_verified_by). Where
+    // clarity_floor gates on a number the WORKER wrote, this one gates on a number
+    // the spine derives from DEFINE.md + the handoff — so it cannot be self-reported.
+    coverage_floor: z.number().min(0).max(100).optional(),
     // Tests at build: when true, G_BUILD requires every PASSED acceptance criterion to cite
     // a `verified_by` (a test/check). UNSET by default (additive). The spine reads the
     // CI-produced `verified_by_result`; it never runs the verifier.

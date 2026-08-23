@@ -1,7 +1,13 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { type GateContext, type GateResult, pass, block } from './types.js';
-import { validateSections, hasManifestTable } from '../validation/md-section-validator.js';
+import {
+  validateSections,
+  hasManifestTable,
+  parseSections,
+  findPlaceholders,
+} from '../validation/md-section-validator.js';
+import { computeDefineCoverage, type CoverageResult } from '../validation/define-coverage.js';
 import { criteriaDiff } from '../validation/criteria-diff.js';
 import { checkHandoffFile } from '../handoff/handoff-check.js';
 import { specDrift } from '../spec-drift.js';
@@ -30,7 +36,8 @@ function artifactMdPath(ctx: GateContext, id: string): string | null {
   return path.join(ctx.featureDir, artifact.generates);
 }
 
-const REQUIRED_DEFINE_SECTIONS = ['Why', 'What', 'Acceptance Criteria'];
+const CRITERIA_SECTION = 'Acceptance Criteria';
+const REQUIRED_DEFINE_SECTIONS = ['Why', 'What', CRITERIA_SECTION];
 const REQUIRED_DESIGN_SECTIONS = ['Overview', 'File Manifest', 'Decisions'];
 
 /** G_DEFINE — before /design. */
@@ -50,6 +57,21 @@ export function gDefine(ctx: GateContext): GateResult {
     unmet.push(`section:${issue.section}`);
   }
 
+  // Stub criteria block UNCONDITIONALLY. `validateSections` already proves the
+  // section has a body; it cannot tell `AC-1: the CRC is 29B1` from `AC-1: TBD`.
+  // Inside the criteria section a stub token is unambiguously not a criterion, so
+  // this needs no config knob — an unwritten criterion can't be diffed at G_BUILD.
+  const criteriaBody = parseSections(md).find(
+    (sec) => sec.title.trim().toLowerCase() === CRITERIA_SECTION.toLowerCase()
+  )?.body;
+  if (criteriaBody) {
+    for (const token of findPlaceholders(criteriaBody)) {
+      reasons.push(`"${CRITERIA_SECTION}" still carries the placeholder "${token}"`);
+      unmet.push(`placeholder-criterion:${token}`);
+    }
+  }
+
+  let coverage: CoverageResult | null = null;
   const hPath = handoffPath(ctx, 'define');
   if (!hPath) {
     reasons.push('no handoff dir configured');
@@ -63,15 +85,41 @@ export function gDefine(ctx: GateContext): GateResult {
       // Optional config-driven clarity floor: turn the recorded 0..1 clarity into a
       // verdict when the schema declares a floor. UNSET => not enforced (additive).
       const floor = ctx.graph?.getSchema().config?.clarity_floor;
-      const clarity = (check.data as { clarity?: number }).clarity;
-      if (typeof floor === 'number' && typeof clarity === 'number' && clarity < floor) {
-        reasons.push(`clarity ${clarity} is below the configured floor ${floor}`);
+      const data = check.data as {
+        clarity?: number;
+        criteria?: string[];
+        open_questions?: string[];
+      };
+      if (typeof floor === 'number' && typeof data.clarity === 'number' && data.clarity < floor) {
+        reasons.push(`clarity ${data.clarity} is below the configured floor ${floor}`);
         unmet.push('clarity-floor');
+      }
+
+      // The deterministic counterweight to that self-reported clarity: a readiness
+      // score the SPINE derives from DEFINE.md + this handoff. Also UNSET by default.
+      coverage = computeDefineCoverage({
+        markdown: md,
+        criteria: data.criteria ?? [],
+        openQuestions: data.open_questions ?? [],
+      });
+      const coverageFloor = ctx.graph?.getSchema().config?.coverage_floor;
+      if (typeof coverageFloor === 'number' && coverage.readiness < coverageFloor) {
+        reasons.push(
+          `discovery readiness ${coverage.readiness} is below the configured floor ${coverageFloor} ` +
+            `(coverage ${coverage.coverage}, decision clarity ${coverage.decision_clarity})`
+        );
+        unmet.push('coverage-floor');
+        for (const blockId of coverage.uncovered) unmet.push(`coverage-block:${blockId}`);
       }
     }
   }
 
-  return unmet.length === 0 ? pass(gate, ['define complete']) : block(gate, reasons, unmet);
+  if (unmet.length > 0) return block(gate, reasons, unmet);
+  const summary = coverage
+    ? `define complete (readiness ${coverage.readiness}, coverage ${coverage.coverage}, ` +
+      `decision clarity ${coverage.decision_clarity})`
+    : 'define complete';
+  return pass(gate, [summary]);
 }
 
 /** G_DESIGN — before /build. */

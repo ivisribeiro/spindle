@@ -70,6 +70,82 @@ describe('G_DEFINE', () => {
     writeHandoff('define', { feature: 'feat', clarity: 0.9, criteria: ['AC-1'] });
     expect(gDefine(ctx).passed).toBe(true);
   });
+
+  // --- placeholder criteria (always enforced, no config knob) ---------------
+
+  it('blocks a placeholder acceptance criterion even when every section is present', () => {
+    writeArtifact('DEFINE.md', '## Why\nx\n## What\ny\n## Acceptance Criteria\n- AC-1: TBD\n');
+    writeHandoff('define', { feature: 'feat', clarity: 0.99, criteria: ['AC-1'] });
+    const r = gDefine(ctx);
+    expect(r.passed).toBe(false);
+    expect(r.unmet).toContain('placeholder-criterion:tbd');
+  });
+
+  it('ignores a placeholder OUTSIDE the criteria section', () => {
+    writeArtifact('DEFINE.md', '## Why\nTODO: revisit later\n## What\ny\n## Acceptance Criteria\n- AC-1: real\n');
+    writeHandoff('define', { feature: 'feat', clarity: 0.9, criteria: ['AC-1'] });
+    expect(gDefine(ctx).passed).toBe(true);
+  });
+
+  // --- deterministic coverage floor (opt-in via config) ---------------------
+
+  const FLOOR_YAML = SDD_YAML.replace(
+    'version: 1',
+    'version: 1\nconfig:\n  coverage_floor: 70'
+  );
+
+  function withCoverageFloor(): GateContext {
+    return { ...ctx, graph: ArtifactGraph.fromYamlContent(FLOOR_YAML) };
+  }
+
+  it('does not enforce a coverage floor when the schema sets none', () => {
+    writeArtifact('DEFINE.md', '## Why\nx\n## What\ny\n## Acceptance Criteria\n- AC-1: thin\n');
+    writeHandoff('define', { feature: 'feat', clarity: 0.9, criteria: ['AC-1'] });
+    expect(gDefine(ctx).passed).toBe(true);
+  });
+
+  it('blocks a thin DEFINE once coverage_floor is configured, naming the uncovered blocks', () => {
+    writeArtifact('DEFINE.md', '## Why\nx\n## What\ny\n## Acceptance Criteria\n- AC-1: thin\n');
+    writeHandoff('define', { feature: 'feat', clarity: 0.99, criteria: ['AC-1'] });
+    const r = gDefine(withCoverageFloor());
+    expect(r.passed).toBe(false);
+    expect(r.unmet).toContain('coverage-floor');
+    expect(r.unmet).toContain('coverage-block:security');
+    // A self-reported clarity of 0.99 must not rescue it.
+    expect(r.reasons.join(' ')).toMatch(/readiness \d+ is below the configured floor 70/);
+  });
+
+  it('passes the same floor when the DEFINE actually covers the discovery blocks', () => {
+    writeArtifact(
+      'DEFINE.md',
+      [
+        '## Why',
+        'The onboarding problem causes measurable pain and impact.',
+        '## What',
+        'Scope: the submission workflow feature for supplier users and operator stakeholders.',
+        'Architecture: a REST API over a Postgres schema.',
+        'Non-functional: p99 latency and cost at scale.',
+        'Security: authentication, authorization and encryption of PII.',
+        'Delivery: deploy via CI with rollback and monitoring.',
+        'Goals: the objective metric is a 40% drop in abandonment.',
+        'Constraints: assumes the legacy ERP stays; the risk is its rate limit.',
+        '## Acceptance Criteria',
+        '- AC-1: a supplier completes onboarding in one session.',
+        '- AC-2: every document is retained with an audit trail.',
+        '- AC-3: an unauthenticated submission is rejected.',
+        '- AC-4: p99 latency stays under 300ms.',
+        '- AC-5: a failed deploy rolls back cleanly.',
+      ].join('\n')
+    );
+    writeHandoff('define', {
+      feature: 'feat',
+      clarity: 0.5,
+      criteria: ['AC-1', 'AC-2', 'AC-3', 'AC-4', 'AC-5'],
+    });
+    const r = gDefine(withCoverageFloor());
+    expect(r.passed).toBe(true);
+    expect(r.reasons.join(' ')).toMatch(/readiness \d+/);
+  });
 });
 
 describe('G_DESIGN', () => {
