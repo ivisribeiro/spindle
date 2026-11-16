@@ -7,6 +7,7 @@
 //
 // This is fixture-authoring tooling, not the spine — it never calls a model.
 
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -172,23 +173,48 @@ writeFixture({
   case: { id: 'G_BUILD-block', gate: 'G_BUILD', expect: 'block', args: {}, note: 'manifest declares missing.txt which was not built (unmet: missing.txt)' },
 });
 
-writeFixture({
-  name: 'G_SHIP-pass',
-  schemaYaml: sddSchema,
-  feature: F,
-  runState: runState('sdd', F, { at: TS, by: 'tester' }),
-  files: { [f('.handoffs/define.json')]: defineHandoff, [f('.handoffs/build.json')]: buildHandoff },
-  case: { id: 'G_SHIP-pass', gate: 'G_SHIP', expect: 'pass', args: {}, note: 'all criteria met AND a human approval is recorded' },
-});
+function shipFixture(name, expect, note, approvalKind, results = [{ criterion: 'AC-1', status: 'passed' }]) {
+  const files = {
+    [f('DEFINE.md')]: DEFINE_OK,
+    [f('DESIGN.md')]: DESIGN_OK,
+    [f('BUILD_REPORT.md')]: '# BUILD REPORT — feat\n\nAC-1 satisfied.\n',
+    [f('.handoffs/define.json')]: defineHandoff,
+    [f('.handoffs/design.json')]: designHandoff('src/a.ts'),
+    [f('.handoffs/build.json')]: j({ feature: F, results, files_written: ['src/a.ts'] }),
+    'src/a.ts': 'export const example = true;\n',
+  };
+  const signed = { ...files, '.spindle/schema.yaml': sddSchema };
+  const snapshot = {
+    version: 1,
+    files: Object.keys(signed).sort().map((file) => ({
+      path: file,
+      sha256: createHash('sha256').update(signed[file]).digest('hex'),
+    })),
+  };
+  const approval = approvalKind === 'missing' ? null : {
+    at: TS,
+    by: 'tester',
+    ...(approvalKind === 'legacy' ? {} : { snapshot }),
+  };
+  if (approvalKind === 'stale') files['src/a.ts'] += '// edited after approval\n';
+  writeFixture({
+    name, schemaYaml: sddSchema, feature: F, runState: runState('sdd', F, approval),
+    files, case: { id: name, gate: 'G_SHIP', expect, args: {}, note },
+  });
+}
 
-writeFixture({
-  name: 'G_SHIP-block',
-  schemaYaml: sddSchema,
-  feature: F,
-  runState: runState('sdd', F, null), // no approval
-  files: { [f('.handoffs/define.json')]: defineHandoff, [f('.handoffs/build.json')]: buildHandoff },
-  case: { id: 'G_SHIP-block', gate: 'G_SHIP', expect: 'block', args: {}, note: 'criteria met but no human approval recorded — spin approve (unmet: approval)' },
-});
+shipFixture('G_SHIP-pass', 'pass', 'all criteria met and approval matches the captured files', 'bound');
+shipFixture('G_SHIP-block', 'block', 'criteria met but no human approval was recorded', 'missing');
+shipFixture('G_SHIP-stale-approval-block', 'block', 'a manifest file changed after approval', 'stale');
+shipFixture('G_SHIP-legacy-approval-block', 'block', 'approval from a legacy ledger lacks file evidence', 'legacy');
+
+const corrected = {
+  criterion: 'AC-1', status: 'passed', corrected_spec: true, correction: 'CRC 29B1 not 1D3D',
+};
+shipFixture('G_SHIP-spec-drift-block', 'block', 'the recorded spec correction is unresolved', 'bound', [corrected]);
+shipFixture('G_SHIP-spec-drift-reconciled-pass', 'pass', 'the recorded spec correction is reconciled', 'bound', [
+  { ...corrected, reconciled: true },
+]);
 
 // ---- KB fixtures ----
 const manifestOk = j({ concepts: [{ slug: 'alpha' }] });
@@ -248,4 +274,4 @@ writeFixture({
   case: { id: 'G_KB_COVERAGE-block', gate: 'G_KB_COVERAGE', expect: 'block', args: {}, note: 'concept alpha has zero test cases, min 1 (unmet: test-cases:alpha)' },
 });
 
-console.log('\n12 state-coupled fixtures generated under schemas/evals/.');
+console.log('\n16 state-coupled fixtures generated under schemas/evals/.');

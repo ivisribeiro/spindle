@@ -81,9 +81,10 @@ Exit 0 → run the shipping gate.
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js gate G_SHIP
 ```
 
-Exit 1 → stop and surface `reasons` and `unmet`. For missing `approval`,
-tell the user to run `spin approve` in their own interactive terminal and
-then re-run `/ship`. The assistant never runs approval, including through
+Exit 1 → stop and surface `reasons` and `unmet`. For missing, stale, or
+unbound approval, report the blocker and any changed paths. Reopen changed
+work and rerun its verifiers before seeking sign-off. Tell the user to run
+`spin approve` in their own interactive terminal and then re-run `/ship`. The assistant never runs approval, including through
 a pseudo-terminal.
 
 Exit 0 → run `spin next` and require `ship` in `ready[]` before dispatching.

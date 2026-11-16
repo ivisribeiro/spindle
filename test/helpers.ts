@@ -2,6 +2,9 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { runCli } from '../src/cli/index.js';
+import { buildGateContext } from '../src/core/gates/gate-runner.js';
+import { captureApprovalSnapshot } from '../src/core/run/approval-snapshot.js';
+import { markApproved } from '../src/core/run/run-state.js';
 
 export interface CliResult {
   code: number;
@@ -37,4 +40,12 @@ export function write(root: string, rel: string, content: string): void {
 export function writeJson(root: string, rel: string, obj: unknown): string {
   write(root, rel, JSON.stringify(obj, null, 2));
   return path.join(root, rel);
+}
+
+
+/** Record a bound approval without allocating an interactive terminal in the test runner. */
+export function approveFixture(root: string): void {
+  const result = captureApprovalSnapshot(buildGateContext(root));
+  if (!result.ok) throw new Error(result.reasons.join('; '));
+  markApproved(root, 'tester', result.snapshot);
 }

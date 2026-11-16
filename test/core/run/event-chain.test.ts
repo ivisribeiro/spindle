@@ -160,7 +160,7 @@ describe('event-chain: integration via run-state.ts', () => {
     markComplete(root, 'define', { tier: 'sonnet', tokens_in: 10, tokens_out: 5 });
     recordGate(root, 'G_DEFINE', { passed: true, reasons: [] });
     incRetry(root, 'build');
-    markApproved(root, 'ivis');
+    markApproved(root, 'ivis', { version: 1, files: [{ path: 'file', sha256: '0'.repeat(64) }] });
 
     const state = loadRunState(root);
     expect(state.events.length).toBe(4);

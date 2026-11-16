@@ -3,5 +3,5 @@
   "gate": "G_SHIP",
   "expect": "pass",
   "args": {},
-  "note": "all criteria met AND a human approval is recorded"
+  "note": "all criteria met and approval matches the captured files"
 }

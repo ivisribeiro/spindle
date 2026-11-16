@@ -1,0 +1,7 @@
+{
+  "id": "G_SHIP-stale-approval-block",
+  "gate": "G_SHIP",
+  "expect": "block",
+  "args": {},
+  "note": "a manifest file changed after approval"
+}

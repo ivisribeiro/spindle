@@ -64,6 +64,12 @@ export const RunEvent = z.discriminatedUnion('kind', [
 ]);
 export type RunEvent = z.infer<typeof RunEvent>;
 
+export const ApprovalSnapshot = z.object({
+  version: z.literal(1),
+  files: z.array(z.object({ path: z.string().min(1), sha256: z.string().regex(/^[0-9a-f]{64}$/) })).min(1),
+});
+export type ApprovalSnapshot = z.infer<typeof ApprovalSnapshot>;
+
 export const RunStateSchema = z.object({
   version: z.literal(1).default(1),
   schema: z.string(), // active schema name, e.g. "sdd" | "kb"
@@ -73,10 +79,8 @@ export const RunStateSchema = z.object({
   gates: z.record(z.string(), GateRecord).default({}),
   // Append-only trajectory. `.default([])` keeps pre-ledger run.json files valid.
   events: z.array(RunEvent).default([]),
-  // Human approval (the seam applied to sign-off): set ONLY by `spin approve`, which
-  // refuses to run unless stdin is an interactive TTY — an automated agent's shell is
-  // not a TTY, so the model cannot fake it. G_SHIP requires this. Cleared on re-gate.
-  approval: z.object({ at: z.string(), by: z.string() }).nullable().default(null),
+  // Pre-binding ledgers still load. G_SHIP requires a fresh, snapshot-bound approval.
+  approval: z.object({ at: z.string(), by: z.string(), snapshot: ApprovalSnapshot.optional() }).nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

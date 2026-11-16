@@ -8,5 +8,7 @@
       "correction": "CRC 29B1 not 1D3D"
     }
   ],
-  "files_written": []
+  "files_written": [
+    "src/a.ts"
+  ]
 }

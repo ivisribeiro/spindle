@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { ArtifactGraph } from '../../../src/core/artifact-graph/graph.js';
+import { captureApprovalSnapshot } from '../../../src/core/run/approval-snapshot.js';
 import { gDefine, gDesign, gBuild, gShip } from '../../../src/core/gates/sdd-gates.js';
 import type { GateContext } from '../../../src/core/gates/types.js';
 
@@ -429,7 +430,17 @@ describe('G_BUILD (replaces the prose checkbox)', () => {
 
 describe('G_SHIP', () => {
   const approve = () => {
-    ctx.runState = { approval: { at: '2026-01-01T00:00:00.000Z', by: 'tester' } } as unknown as typeof ctx.runState;
+    fs.writeFileSync(path.join(root, '.spindle', 'schema.yaml'), SDD_YAML);
+    for (const file of ['DEFINE.md', 'DESIGN.md', 'BUILD_REPORT.md']) writeArtifact(file, '# Evidence\n');
+    fs.writeFileSync(path.join(root, 'implementation.js'), 'export const example = true;');
+    writeHandoff('design', {
+      feature: 'feat', manifest: [{ file: 'implementation.js', action: 'create', purpose: 'example' }],
+    });
+    const captured = captureApprovalSnapshot(ctx);
+    if (!captured.ok) throw new Error(captured.reasons.join('; '));
+    ctx.runState = { approval: {
+      at: '2026-01-01T00:00:00.000Z', by: 'tester', snapshot: captured.snapshot,
+    } } as unknown as typeof ctx.runState;
   };
 
   it('blocks when criteria are met but there is no human approval (A1)', () => {
@@ -451,6 +462,18 @@ describe('G_SHIP', () => {
     writeHandoff('build', { feature: 'feat', results: [{ criterion: 'AC-1', status: 'passed' }] });
     approve();
     expect(gShip(ctx).passed).toBe(true);
+  });
+
+  it('rejects a manifest file replaced by a symlink after approval', () => {
+    writeHandoff('define', { feature: 'feat', clarity: 1, criteria: ['AC-1'] });
+    writeHandoff('build', { feature: 'feat', results: [{ criterion: 'AC-1', status: 'passed' }] });
+    approve();
+    const implementation = path.join(root, 'implementation.js');
+    fs.renameSync(implementation, path.join(root, 'same-content.js'));
+    fs.symlinkSync('same-content.js', implementation);
+    const verdict = gShip(ctx);
+    expect(verdict.unmet).toContain('approval-evidence');
+    expect(verdict.reasons[0]).toContain('implementation.js');
   });
 
   it('BLOCKS a phantom criterion at ship (build/define set-drift)', () => {

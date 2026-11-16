@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
-import { cli, tmpProject, write, writeJson } from '../helpers.js';
-import { markApproved } from '../../src/core/run/run-state.js';
+import { loadRunState, saveRunState } from '../../src/core/run/run-state.js';
+import { approveFixture, cli, tmpProject, write, writeJson } from '../helpers.js';
 
 // THE deliverable test. Drives the full 5-phase SDD cycle through the real CLI,
 // simulating the model layer with deterministic fixture files. Proves the harness
@@ -68,10 +68,11 @@ describe('E2E: full SDD cycle through the spin CLI', () => {
     // --- Phase 3: build — write ONLY one of two manifest files ---
     write(root, 'src/auth.ts', '// auth\n');
     write(root, '.spindle/features/sample/BUILD_REPORT.md', '# build report\n');
+    write(root, 'src/auth.test.ts', '// verifier fixture\n');
     const buildHandoff = writeJson(root, 'work/build.json', {
       feature: 'sample',
       results: [
-        { criterion: 'AC-1', status: 'passed' },
+        { criterion: 'AC-1', status: 'passed', verified_by: 'src/auth.test.ts' },
         { criterion: 'AC-2', status: 'passed' },
       ],
       files_written: ['src/auth.ts'],
@@ -94,10 +95,34 @@ describe('E2E: full SDD cycle through the spin CLI', () => {
     expect(diff.json.unmet).toEqual([]);
     // human sign-off — `spin approve` is TTY-gated (no TTY in the test runner), so record
     // it directly; G_SHIP requires it.
-    markApproved(root, 'tester');
+    approveFixture(root);
     expect((await R('gate', 'G_SHIP')).code).toBe(0);
 
     write(root, '.spindle/features/sample/SHIPPED.md', '# shipped\n');
+    for (const file of [
+      '.spindle/features/sample/DEFINE.md',
+      '.spindle/features/sample/.handoffs/build.json',
+      'src/auth.ts',
+      'src/auth.test.ts',
+    ]) {
+      const original = fs.readFileSync(`${root}/${file}`, 'utf8');
+      write(root, file, original + '\n');
+      const blocked = await R('complete', 'ship');
+      expect(blocked.code).toBe(1);
+      expect(blocked.json.unmet).toEqual(['approval-stale', file]);
+      write(root, file, original);
+      expect((await R('gate', 'G_SHIP')).code).toBe(0);
+    }
+
+    const ledger = loadRunState(root);
+    saveRunState(root, { ...ledger, approval: { at: ledger.approval!.at, by: ledger.approval!.by } });
+    const legacy = await R('complete', 'ship');
+    expect(legacy.code).toBe(1);
+    expect(legacy.json.unmet).toEqual(['approval-unbound']);
+
+    approveFixture(root);
+    expect((await R('complete', 'ship')).json.unmet).toEqual(['G_SHIP']);
+    expect((await R('gate', 'G_SHIP')).code).toBe(0);
     expect((await R('complete', 'ship')).code).toBe(0);
 
     // --- final state: everything complete ---

@@ -121,7 +121,7 @@ describe('run-state ledger', () => {
     markComplete(root, 'define');
     markComplete(root, 'design');
     recordGate(root, 'G_DEFINE', { passed: true, reasons: [] });
-    markApproved(root, 'ivis');
+    markApproved(root, 'ivis', { version: 1, files: [{ path: 'file', sha256: '0'.repeat(64) }] });
     invalidate(root, ['design', 'build', 'ship']); // the closure of an edited 'design'
     const s = loadRunState(root);
     expect(s.completed).toEqual(['define']); // upstream stays; closure dropped
@@ -132,7 +132,7 @@ describe('run-state ledger', () => {
   it('records human approval + an approve event; re-gate (markIncomplete) clears it', () => {
     initRunState(root, 'sdd', 'feat');
     expect(loadRunState(root).approval).toBe(null);
-    markApproved(root, 'ivis');
+    markApproved(root, 'ivis', { version: 1, files: [{ path: 'file', sha256: '0'.repeat(64) }] });
     let s = loadRunState(root);
     expect(s.approval?.by).toBe('ivis');
     expect(s.events.some((e) => e.kind === 'approve')).toBe(true);

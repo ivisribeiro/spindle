@@ -13,6 +13,8 @@ import { criteriaDiff } from '../validation/criteria-diff.js';
 import { checkHandoffFile } from '../handoff/handoff-check.js';
 import { specDrift } from '../spec-drift.js';
 import { isContainedPath } from '../util/paths.js';
+import { looksLikePath } from '../validation/verifier-path.js';
+import { captureApprovalSnapshot, changedApprovalPaths } from '../run/approval-snapshot.js';
 
 // The SDD gates. These replace AgentSpec build.md's prose "max 3 retry" and the
 // self-marked checkbox quality gate with deterministic, testable checks.
@@ -189,23 +191,6 @@ interface BuildResults {
   coverage?: { tool?: string; pct?: number; threshold?: number };
 }
 
-/**
- * A verified_by value worth existence-checking on disk: a single POSIX repo-relative
- * path token. Everything else is ACCEPTED WITHOUT a check rather than false-blocked —
- * a command has a space ("npm run e2e"), a URL has a scheme ("http://…"), a Windows
- * path has a backslash/drive ("C:\\…", "src\\a"), and a bare version is a dotted
- * NUMBER ("v1.2", "1.0"). Only a separator or a real (letter-led) file extension on
- * an otherwise plain token counts. (dogfood: adversary-confirmed false-block vectors.)
- */
-function looksLikePath(v: string): boolean {
-  if (v.includes(' ')) return false; // command
-  if (v.includes('://')) return false; // URL citation
-  if (v.includes('\\')) return false; // Windows path — not a POSIX repo path
-  if (/^[a-zA-Z]:/.test(v)) return false; // Windows drive letter
-  // extension must start with a LETTER, so "v1.2" / "1.0" are not read as paths
-  return v.includes('/') || /\.[a-z][a-z0-9]{0,5}$/i.test(v);
-}
-
 /** G_BUILD — before /ship. Replaces the prose checkbox + max-3-retry. */
 export function gBuild(ctx: GateContext): GateResult {
   const gate = 'G_BUILD';
@@ -313,6 +298,19 @@ export function gBuild(ctx: GateContext): GateResult {
 /** G_SHIP — inside /ship. define.criteria minus build.passed must be empty. */
 export function gShip(ctx: GateContext): GateResult {
   const gate = 'G_SHIP';
+  const approved = ctx.runState?.approval?.snapshot;
+  if (approved) {
+    const current = captureApprovalSnapshot(ctx);
+    if (!current.ok) return block(gate, current.reasons, ['approval-evidence']);
+    const changed = changedApprovalPaths(approved, current.snapshot);
+    if (changed.length > 0) {
+      return block(gate, [
+        'approved evidence changed — review the listed paths and run `spin approve` again after verification',
+        ...changed.map((file) => `changed approval evidence: ${file}`),
+      ], ['approval-stale', ...changed]);
+    }
+  }
+
   const defineHandoff = handoffPath(ctx, 'define');
   const buildHandoff = handoffPath(ctx, 'build');
   const define = defineHandoff ? safeJson<DefineCriteria>(defineHandoff) : null;
@@ -341,8 +339,7 @@ export function gShip(ctx: GateContext): GateResult {
       diff.extra.map((id) => `phantom:${id}`)
     );
   }
-  // Final sign-off: criteria are met, but ship requires un-fakeable human approval
-  // (set only by `spin approve` at an interactive terminal — the seam applied to ship).
+  // Final sign-off is recorded by the interactive approval command.
   if (!ctx.runState?.approval) {
     return block(
       gate,
@@ -367,6 +364,9 @@ export function gShip(ctx: GateContext): GateResult {
       ],
       drift.drifted.map((d) => `spec-drift:${d.criterion}`)
     );
+  }
+  if (!approved) {
+    return block(gate, ['existing approval predates evidence binding — review and run `spin approve` again'], ['approval-unbound']);
   }
   return pass(gate, [
     `all ${define.criteria.length} acceptance criteria met`,

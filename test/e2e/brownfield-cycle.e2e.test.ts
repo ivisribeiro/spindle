@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
-import { cli, tmpProject, write, writeJson } from '../helpers.js';
-import { markApproved } from '../../src/core/run/run-state.js';
+import { approveFixture, cli, tmpProject, write, writeJson } from '../helpers.js';
 
 // Drives the brownfield workflow through the real CLI. Proves two things the old
 // audit→define→design dead-end could not: (1) the run now spans the full
@@ -86,7 +85,7 @@ describe('E2E: brownfield cycle through the spin CLI', () => {
 
     // --- Phase 4: ship — G_AUDIT already green from the early anchor, so the terminal
     // backstop is satisfied and ship completes on G_BUILD + G_SHIP alone ---
-    markApproved(root, 'tester');
+    approveFixture(root);
     expect((await R('gate', 'G_SHIP')).code).toBe(0);
 
     write(root, '.spindle/features/auth/SHIPPED.md', '# shipped\n');

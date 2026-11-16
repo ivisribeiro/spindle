@@ -1,0 +1,12 @@
+{
+  "feature": "feat",
+  "manifest": [
+    {
+      "file": "src/a.ts",
+      "action": "create",
+      "purpose": "implement"
+    }
+  ],
+  "decisions": [],
+  "technologies": []
+}

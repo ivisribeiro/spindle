@@ -8,7 +8,44 @@
   "events": [],
   "approval": {
     "at": "2026-06-22T00:00:00.000Z",
-    "by": "tester"
+    "by": "tester",
+    "snapshot": {
+      "version": 1,
+      "files": [
+        {
+          "path": ".spindle/features/feat/.handoffs/build.json",
+          "sha256": "42575442411e58f1fa81b0696191ac6fe30eab871b1ce7539f2ca2ea2bb1f738"
+        },
+        {
+          "path": ".spindle/features/feat/.handoffs/define.json",
+          "sha256": "b9b45a1917d303daa9a0310f34575cbb1b2677d0baeb6f7546b693d73f075b8d"
+        },
+        {
+          "path": ".spindle/features/feat/.handoffs/design.json",
+          "sha256": "036dd317adc555a4bed656b6954696b8f655fd50d47483507b693b5c98e08610"
+        },
+        {
+          "path": ".spindle/features/feat/BUILD_REPORT.md",
+          "sha256": "4fdeabcdbc6ab128ea3edb79cd45454457038cd0df4001df81c3dffe007ede42"
+        },
+        {
+          "path": ".spindle/features/feat/DEFINE.md",
+          "sha256": "9a5250984576b9188c668596bbe5c44684ea19de90d3216bf69ed5a056a23ae3"
+        },
+        {
+          "path": ".spindle/features/feat/DESIGN.md",
+          "sha256": "e3ae84908a39637cf84009bb129bb3493c81196864a992e794a5c8d9c8be17a9"
+        },
+        {
+          "path": ".spindle/schema.yaml",
+          "sha256": "d84636030b4fd9127310d7ffe434f751dab58dbb0df90ba960b3c9faf614a593"
+        },
+        {
+          "path": "src/a.ts",
+          "sha256": "c4c0d760a4c84f0e182de99f6ef89ef10831f8170e486c4d4bd934924151ba64"
+        }
+      ]
+    }
   },
   "createdAt": "2026-06-22T00:00:00.000Z",
   "updatedAt": "2026-06-22T00:00:00.000Z"

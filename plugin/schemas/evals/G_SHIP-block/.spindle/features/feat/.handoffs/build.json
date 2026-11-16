@@ -6,5 +6,7 @@
       "status": "passed"
     }
   ],
-  "files_written": []
+  "files_written": [
+    "src/a.ts"
+  ]
 }

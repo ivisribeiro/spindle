@@ -3,5 +3,5 @@
   "gate": "G_SHIP",
   "expect": "block",
   "args": {},
-  "note": "criteria met + approved, but the build CORRECTED AC-1 and DEFINE is not reconciled — unreconciled spec-drift blocks (unmet: spec-drift:AC-1)"
+  "note": "the recorded spec correction is unresolved"
 }

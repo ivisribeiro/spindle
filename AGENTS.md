@@ -129,7 +129,7 @@ between `src/`+`schemas/` and `plugin/`.
 | `spin fanout-check` | assert no `parallel_group` is partially complete (a dropped fan-out worker); exit 0 all-consistent / 1 partial. Run before a phase gate |
 | `spin state` | the `run.json` ledger (`completed[]`, `retries{}`, `gates{}`) |
 | `spin complete <id> [--handoff f.json]` | require predecessors and lifecycle gates, validate the handoff, then mark complete (exit 1 if blocked) |
-| `spin approve [--by <name>]` | record human sign-off (required by `G_SHIP`). REFUSES unless stdin is an interactive TTY. The user runs it directly and the assistant never invokes it |
+| `spin approve [--by <name>]` | record sign-off for hashes of the active schema, Define/Design/Build artifacts and handoffs, manifest paths, reported build files, and cited local verifier files. Refuses without interactive stdin. The user runs it directly |
 | `spin invalidate <id>` | after an `/iterate` edit: drop `<id>` + its downstream closure from the ledger and void ALL gate verdicts + approval, so no stale-green survives |
 | `spin validate <id\|path>` | structural checks (md sections / manifest table / criteria IDs); exit 0/1 |
 | `spin gate <gateId> [--agents d] [--routing f] [--kb d] [--findings f]` | run a named gate; exit 0 pass / 1 BLOCK with `{gate,passed,reasons,unmet}`. `--kb` (default `plugin/kb`) backs G_ROUTER_COVERAGE's kb_domains referential check |
@@ -158,7 +158,7 @@ between `src/`+`schemas/` and `plugin/`.
 exists + no passed criterion's CI `verified_by_result` is `failed` + (when
 `config.require_verified_by`) every passed criterion cites a verifier; the spine
 READS the CI result, never runs the verifier), `G_SHIP` (define.criteria minus build.passed is empty AND a human approval is
-recorded via `spin approve` — the seam applied to sign-off: a model cannot approve), `G_KB_STRUCTURE`,
+recorded via `spin approve` and still matches the current evidence), `G_KB_STRUCTURE`,
 `G_KB_COVERAGE` (every manifest concept authored + enough test cases; manifest shape
 is Zod-validated; E-1: a `needs_decoding` concept must carry a non-empty
 `decoding_note`), `G_ROUTER_COVERAGE` (agent→routing bijection, no silent skips, PLUS

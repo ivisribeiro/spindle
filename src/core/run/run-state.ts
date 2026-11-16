@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { RunStateSchema, type RunState, type GateRecord, type RunEvent, type Usage } from './run-state.schema.js';
+import { RunStateSchema, type RunState, type GateRecord, type RunEvent, type Usage, type ApprovalSnapshot } from './run-state.schema.js';
 import { hashNewEvent } from './event-chain.js';
 
 // Atomic, Zod-validated read/write of .spindle/run.json. This module is the single
@@ -121,12 +121,12 @@ export function initRunState(root: string, schema: string, feature: string): Run
   return saveRunState(root, state);
 }
 
-/** Record human sign-off. Called by `spin approve`, which gates on an interactive TTY
- *  so an automated agent cannot reach this path. G_SHIP requires the result. */
-export function markApproved(root: string, by: string): RunState {
+/** Record interactive sign-off and require a new G_SHIP verdict. */
+export function markApproved(root: string, by: string, snapshot: ApprovalSnapshot): RunState {
   const state = loadRunState(root);
   const at = nowIso();
-  state.approval = { at, by };
+  state.approval = { at, by, snapshot };
+  delete state.gates.G_SHIP;
   state.events = appendEvent(state, { kind: 'approve', at, by });
   return saveRunState(root, state);
 }

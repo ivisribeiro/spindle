@@ -39,6 +39,7 @@ import { route, listTaskKinds, type Budget } from '../core/model-route/policy.js
 import { classifyTier, type TierSignals, type Risk, type Breadth } from '../core/model-route/tiers.js';
 import { aggregateUsageStats } from '../core/model-route/usage-stats.js';
 import { verifyEventChain } from '../core/run/event-chain.js';
+import { captureApprovalSnapshot } from '../core/run/approval-snapshot.js';
 import { reconcileAudit } from '../core/reconcile.js';
 import { configDrift } from '../core/config-drift.js';
 import { explainGate } from '../core/gates/gate-docs.js';
@@ -630,6 +631,15 @@ export function completeHandler(
     }
   }
 
+  // A saved green verdict is insufficient if approved files changed outside Iterate.
+  if (requiredGates.includes('G_SHIP')) {
+    const current = runGate('G_SHIP', buildGateContext(root));
+    if (!current.passed) {
+      recordGate(root, 'G_SHIP', { passed: false, reasons: current.reasons });
+      return blocked(current);
+    }
+  }
+
   // Advisory-only (never affects the exit code): unknown top-level keys the handoff's
   // schema silently stripped on parse (e.g. a typo like "files_writen"). Set below when
   // the artifact carries a handoff sidecar; threaded into the exit-0 result at the end.
@@ -1049,17 +1059,25 @@ export function invalidateHandler(root: string, id: string): HandlerResult {
 
 export function approveHandler(root: string, opts: { by?: string }): HandlerResult {
   if (!runStateExists(root)) return usage('no run state — run "spin init" first');
-  // The seam applied to sign-off: approval requires a human at an interactive TTY. An
-  // automated agent's shell is not a TTY, so the model cannot grant it. There is NO
-  // bypass flag — that is the whole point (G_SHIP depends on this being un-fakeable).
   if (!process.stdin.isTTY) {
     return usage(
-      'approval requires an interactive human terminal — an automated agent cannot approve. Run `spin approve` yourself in a terminal before /ship.'
+      'approval requires an interactive human terminal. Run `spin approve` yourself in a terminal before /ship.'
     );
   }
+  const ctx = buildGateContext(root);
+  const missing = ['define', 'design', 'build'].filter((id) => !ctx.runState?.completed.includes(id));
+  if (missing.length > 0) {
+    return blocked({ approved: false, reasons: ['record Define, Design and Build before approval'], unmet: missing });
+  }
+  const captured = captureApprovalSnapshot(ctx);
+  if (!captured.ok) return blocked({ approved: false, reasons: captured.reasons, unmet: ['approval-evidence'] });
+  for (const gate of ['G_DEFINE', 'G_DESIGN', 'G_BUILD']) {
+    const result = runGate(gate, ctx);
+    if (!result.passed) return blocked(result);
+  }
   const by = opts.by ?? process.env.USER ?? 'human';
-  const state = markApproved(root, by);
-  return ok({ approved: true, by, at: state.approval?.at ?? null, feature: state.feature });
+  const state = markApproved(root, by, captured.snapshot);
+  return ok({ approved: true, by, at: state.approval?.at ?? null, feature: state.feature, snapshot: captured.snapshot });
 }
 
 // ---------------------------------------------------------------------------

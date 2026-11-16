@@ -9,5 +9,7 @@
       "reconciled": true
     }
   ],
-  "files_written": []
+  "files_written": [
+    "src/a.ts"
+  ]
 }

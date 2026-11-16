@@ -80,12 +80,13 @@ export const GATE_DOCS: Record<string, GateDoc> = {
   G_SHIP: {
     gate: 'G_SHIP',
     purpose: 'Final certification inside /ship: define.criteria minus build.passed must be empty.',
-    reads: ['.handoffs/define.json (criteria)', '.handoffs/build.json (results, incl. corrected_spec flags)'],
+    reads: ['Define, Design and Build artifacts and their canonical JSON handoffs', 'active schema, manifest, build outputs and verifier files', 'approval snapshot in run state'],
     handoff: 'build-report',
     blocks_when: [
       'any acceptance criterion in DEFINE is not satisfied by the build results',
       'the build certifies a criterion DEFINE never declared (phantom/set-drift)',
-      'no human approval recorded via `spin approve`',
+      'no snapshot-bound human approval recorded via `spin approve`',
+      'approved evidence is missing, unsafe or changed since approval',
       'an unreconciled spec-drift: a build result with corrected_spec:true not yet reconciled (unmet: spec-drift:<AC>)',
     ],
     flags: [],

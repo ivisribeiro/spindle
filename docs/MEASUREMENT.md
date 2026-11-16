@@ -64,3 +64,28 @@ that reported spend per tier and, given an optional `--max-tokens` ceiling, flag
   model-aware even with no network call).
 - A gate that branches on token *magnitude* (that would let cost block correct work).
 - A reason to auto-downgrade a tier (the CLI records cost; it never acts on it).
+
+## Prompt evaluation across assistants
+
+The prompt eval runner lives outside the `spin` CLI. It creates a synthetic
+payment reconciliation checkout, establishes a Define checkpoint, and asks a
+fresh session to resume Design using the installed portable workflow. The grader
+reads the ledger, the original Define files, the Design handoff and gate, and the
+next ready artifact.
+
+```bash
+node scripts/prompt-eval.mjs --mode fixture --out /path/to/new-fixture-results
+node scripts/prompt-eval.mjs --mode live --out /path/to/new-live-results --trials 3
+```
+
+Fixture mode injects a missing Design handoff and exercises the comparison and
+repair mechanism without model calls. Live mode uses Codex for Define and a
+fresh Claude Code session for Design. Both clients need working local credentials.
+Set `SPINDLE_EVAL_CODEX` and `SPINDLE_EVAL_CLAUDE` for nonstandard executable
+paths. Optional `SPINDLE_EVAL_CODEX_MODEL` and `SPINDLE_EVAL_CLAUDE_MODEL` pin
+the models. A producer failure invalidates the comparison.
+
+For an eligible baseline failure, the runner selects one bounded prompt amendment
+and compares it with the original from copies of the same checkpoint. The
+report records the checks and prompt digests. The candidate stays in the output
+directory for review. The runner never promotes it or edits the distributed prompt.

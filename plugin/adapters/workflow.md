@@ -170,8 +170,10 @@ through **Iterate** once the user authorizes the spec change, and carry
 `reconciled: true` into the rebuilt handoff only after the spec reflects it.
 Reconciliation requires fresh human approval.
 
-Run `spin gate G_SHIP`. If approval is missing, show the blocker and ask the
-user to run `node .spindle/harness/bin/spin.js approve` in their own terminal
+Run `spin gate G_SHIP`. If approval is missing, unbound, or stale, report
+the blocker and any changed paths. When the approved files have changed,
+reopen the affected phase and rerun its verifiers before seeking sign-off.
+Ask the user to run `node .spindle/harness/bin/spin.js approve` in their own terminal
 from the project root after reviewing the evidence. Never run approval for
 them, including through a pseudo-terminal. Resume Ship after approval.
 

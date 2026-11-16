@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { cli, tmpProject } from '../helpers.js';
 
 let root: string;
@@ -373,19 +374,31 @@ describe('spin CLI exit-code ABI', () => {
     expect(r.json.error).toContain('interactive');
   });
 
-  it('approve records sign-off when run from a TTY, and spin state shows it', async () => {
-    await cli(['--root', root, 'init', '--schema', 'sdd', '--feature', 'f']);
+  it('approve checks the current artifacts and records a bound sign-off from a TTY', async () => {
+    const fixture = fileURLToPath(new URL('../../schemas/evals/G_SHIP-pass', import.meta.url));
+    fs.cpSync(fixture, root, { recursive: true });
+    const run = (...args: string[]) => cli(['--root', root, ...args]);
+    const handoffs = `${root}/.spindle/features/feat/.handoffs`;
+    const phases = [['define', 'G_DEFINE'], ['design', 'G_DESIGN'], ['build', 'G_BUILD']];
     const orig = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
     Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
     try {
-      const r = await cli(['--root', root, 'approve', '--by', 'ivis']);
-      expect(r.code).toBe(0);
-      expect(r.json.approved).toBe(true);
-      expect(r.json.by).toBe('ivis');
+      const incomplete = await run('approve');
+      expect(incomplete.code).toBe(1);
+      expect(incomplete.json.unmet).toEqual(['define', 'design', 'build']);
+      for (const [phase, gate] of phases) {
+        expect((await run('complete', phase, '--handoff', `${handoffs}/${phase}.json`)).code).toBe(0);
+        expect((await run('gate', gate)).code).toBe(0);
+      }
+      const approval = await run('approve', '--by', 'person');
+      expect(approval.code, approval.out).toBe(0);
+      expect(approval.json).toMatchObject({ approved: true, by: 'person', snapshot: { version: 1 } });
+      const state = await run('state');
+      expect(state.json.approval.snapshot).toEqual(approval.json.snapshot);
+      expect((await run('gate', 'G_SHIP')).code).toBe(0);
     } finally {
       if (orig) Object.defineProperty(process.stdin, 'isTTY', orig);
+      else Reflect.deleteProperty(process.stdin, 'isTTY');
     }
-    const state = await cli(['--root', root, 'state']);
-    expect(state.json.approval.by).toBe('ivis');
   });
 });

@@ -1,0 +1,7 @@
+{
+  "id": "G_SHIP-legacy-approval-block",
+  "gate": "G_SHIP",
+  "expect": "block",
+  "args": {},
+  "note": "approval from a legacy ledger lacks file evidence"
+}

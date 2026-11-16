@@ -35,7 +35,7 @@ The portable workflow covers brainstorm, define, design, build, ship, iteration,
 
 - **Acceptance criteria carry through the build.** Define assigns IDs such as `AC-1`. `G_DEFINE` checks that the Markdown and JSON handoff list the same criteria. The build report records results against those IDs. `G_BUILD` checks for missing criteria and undeclared criteria reported as passed. It can require a verifier reference and block when supplied CI evidence reports a failed verification.
 - **Spec corrections stay visible.** A build can record that it corrected a criterion. `G_SHIP` blocks while any recorded correction remains unreconciled.
-- **Shipping requires a sign-off.** The developer runs `spin approve` from an interactive terminal. `G_SHIP` checks the recorded approval. `spin invalidate` clears approval and gate verdicts and reopens the affected work.
+- **Shipping requires a sign-off on the reviewed files.** The developer runs `spin approve` from an interactive terminal after verifying the build evidence. The approval binds the workflow schema, Define, Design, Build, their canonical handoffs, and the code and verifier files declared in those handoffs. `G_SHIP` and Ship completion check the snapshot again. A changed or missing file requires review and fresh approval.
 - **The project keeps the evidence.** `.spindle/` holds the editable workflow, Markdown artifacts, JSON handoffs, and the run-ledger. `spin trace` shows recorded completions, gate verdicts, retries, and approval.
 
 The assistant authors specs, implementation, and evidence. The model-free `spin` CLI validates handoffs and returns an exit code deciding whether the workflow can advance. The checks cover file references, criteria consistency, and structured evidence. Correctness still depends on meaningful tests and review. The approval command checks for an interactive terminal. Teams that need to authenticate a reviewer should use their repository’s review controls. See [STATUS.md](STATUS.md) and the [PIX reconciliation dogfood log](docs/DOGFOOD_LOG_pix-brcode.md).
@@ -134,7 +134,7 @@ Invoke `node /path/to/spindle/bin/spin.js` from your project root to use the che
 | `spin config-drift --declared a,b --present a` | Tools required by CI but absent from the lockfile | 0 / 1 |
 | `spin spec-drift --build f.json` | Acceptance criteria the build CORRECTED vs DEFINE (`corrected_spec`) — a false spec can't ride a green build | 0 / 1 |
 | `spin schema show\|validate [handoffId]` | Inspect/validate the active schema; `show <handoff-id>` describes a handoff JSON shape | 0 / 1 / 2 |
-| `spin approve [--by <name>]` | Record human sign-off (required by `G_SHIP`). **Refuses unless run in an interactive TTY** — the workflow asks the human to run it | 0 / 2 |
+| `spin approve [--by <name>]` | Record human sign-off (required by `G_SHIP`). **Requires an interactive TTY.** Captures the current approval evidence after the phase checks pass | 0 / 1 / 2 |
 | `spin invalidate <id>` | After an `/iterate` edit: drop `<id>` + its downstream closure from the ledger and void all gate verdicts + approval, so no stale-green survives | 0 / 2 |
 | `spin trace [--verify]` | Print the run-ledger timeline (`events[]`) + a tier/token summary — a pure read. `--verify` walks the event hash chain: exit 1 names the first broken link | 0 / 1 |
 | `spin eval [--strict]` | Replay the eval corpus through the **real** gates; exit 1 on any verdict regression. `--strict` also fails if a registry gate lacks a pass+block fixture | 0 / 1 |
@@ -352,7 +352,7 @@ build worker ─▶ code + tests + build-report (verified_by + CI verified_by_re
 
 ### 4 — Iterate cascade (no stale-green)
 
-Run `spin invalidate` before editing a gated artifact. It removes the artifact and its downstream dependencies from the completed list and clears every gate verdict and approval. If a file was edited outside the workflow, invalidate the affected phase before relying on the ledger. The current run state does not automatically detect those edits.
+Run `spin invalidate` before editing a gated artifact. It removes the artifact and its downstream dependencies from the completed list and clears every gate verdict and approval. If a file was edited outside the workflow, invalidate the affected phase before resuming. The shipping checks detect changes to files in the approval snapshot. Earlier gate verdicts remain recorded until invalidation or reevaluation.
 
 ```
 /iterate edits DESIGN
