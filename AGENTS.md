@@ -4,7 +4,7 @@ This file governs anyone (human or model) who edits this repo. Read it before
 touching code. If a chat instruction conflicts with the invariant below, **stop
 and ask** — do not adapt silently.
 
-`spindle` is a Codex plugin. It has two layers and exactly one
+`spindle` is a spec-driven development harness with project-local adapters for Codex, Claude Code, Gemini CLI, and Cursor. It has two layers and exactly one
 seam between them. Keeping that seam clean is the whole job.
 
 ---
@@ -17,10 +17,12 @@ validation, gates, routing, the ledger. Given the same `.spindle/` on disk it
 returns the same answer and the same exit code, every time, with no network and
 no inference.
 
-The **only** place a model runs is a slash command (`commands/*.md`). A command
-calls `spin` for every ordering / validation / gate / state / routing decision,
-branches **strictly on the exit code**, and fans out worker subagents via the
-Task tool. A worker authors an artifact; it never decides control flow.
+Model work runs in the host assistant. The native Claude plugin uses slash
+commands and the Task tool. Project-local adapters load the shared portable
+workflow and use the host’s delegation tools when available. Each entry point
+calls `spin` for ordering, validation, gates, state, and routing, and branches on
+its exit code. A worker authors artifacts and handoffs. The coordinator alone
+invokes state transitions.
 
 This invariant is not a guideline — it is enforced by a guard test (see §6). A
 change that makes `spin` import an SDK, hit an endpoint, read an API key, or
@@ -29,9 +31,9 @@ think you need a model inside `spin`, you have mislocated the work: it belongs i
 a command or a worker, on the model side of the seam.
 
 Corollary anti-patterns — never do these:
-- Telling Codex to "run the agents from node" or call an inference endpoint
-  directly. Dispatch is the Task tool, from a command. That is the only
-  dispatch path.
+- Dispatching workers from Node or calling an inference endpoint directly.
+  Use the host’s delegation tool for model work, or author sequentially in the
+  current session when the portable workflow permits it.
 - Marking an artifact complete by hand, or having a worker advance a phase.
   Only `spin complete` mutates the ledger; only a passing `spin gate` advances a
   phase.
@@ -64,7 +66,8 @@ Invoke the CLI as:
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js <args>
 ```
 
-Throughout this doc and the commands, `spin <args>` is shorthand for exactly that.
+For a project-local adapter, use `node .spindle/harness/bin/spin.js <args>`
+from the project root. Both entry points run the same CLI.
 
 ---
 
@@ -98,7 +101,8 @@ schemas/              JSON Schemas for the handoff sidecars (define, design,
                       build-task, build-report, finding, claim, migration-plan,
                       claudemd-section, kb-concept) + the editable workflow schemas
 plugin/               the model-facing layer that ships in the plugin
-  commands/           slash commands (.md) — the only place a model runs
+  adapters/           project-local entry points and shared portable workflow
+  commands/           native Claude plugin slash commands (.md)
   agents/             worker subagents (.md) dispatched via Task
 dist/                 compiled CLI (node dist/cli/index.js). BUILD OUTPUT — never hand-edit
 .spindle/                 per-project runtime state (see §8). CLI-written; not a source dir

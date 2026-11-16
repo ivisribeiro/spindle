@@ -1,41 +1,60 @@
-# spindle
+# Spindle
 
-**A deterministic harness for spec-driven development in Claude Code** — it turns the SDD cycle (Brainstorm → Define → Design → Build → Ship) into a gate-backed workflow where `spin` is the spine and Claude is the worker.
+**A shared spec-to-ship workflow for AI coding assistants.** Start a feature in one assistant, continue it in another, and review the same acceptance criteria, test references, and gate decisions in the project.
 
-> **The idea in one line:** separate the thing that *decides* from the thing that *generates*. Claude writes; a deterministic TypeScript CLI named `spin` decides what "done" means — and `spin` **never calls a model** (a CI grep-guard fails the build if `src/` so much as references `fetch(`). "Done" becomes a checkable verdict over files, evidence, and acceptance-criterion identity — returned as an exit code — not a self-marked checkbox.
+Spindle is for developers and teams shipping changes that need a reviewable record of what was agreed, built, and checked. For example, define a payments reconciliation feature in Gemini CLI with `AC-1` requiring duplicate imports to leave balances unchanged. Implement it in Cursor and record the test against `AC-1` in the build report. A reviewer on Codex or Claude Code can find the criterion, its test reference, and the gate verdict in the same checkout.
 
-See [STATUS.md](STATUS.md) for the current verified test count, what works today, and known limitations, stated without marketing language.
+## Start here
 
-### Why it exists / what makes it different
+Requires Node.js 20.19 or newer. Clone Spindle, then install into the project where you want to use it:
 
-Most spec-driven AI tools have one blind spot: when every check is green, you assume the spec is right. Spindle is built to make that assumption *testable*. Versus a plain file-existence completion model:
+```bash
+git clone https://github.com/ivisribeiro/spindle.git
+node ./spindle/bin/spindle-install.js --target all --root /path/to/your/project
+cd /path/to/your/project
+node .spindle/harness/bin/spin.js doctor
+```
 
-- **"Done" can be a content verdict, not just a file existing** — for any artifact whose schema declares a `handoff:`, `spin complete` refuses to mark it done unless a Zod sidecar passes, and `G_BUILD` set-diffs every acceptance criterion. It also enforces criteria-set consistency *both ways* — blocking a **phantom** AC the build certifies that DEFINE never declared (an ID-set drift the spine catches with no disclosure; note this is *not* the same as a wrong-*value* drift, which is `spec-drift`'s job) — and, *when* a `passed` criterion cites a test file via `verified_by`, requires that file to exist (opt-in, existence-only — it doesn't make evidence mandatory).
-- **The deterministic spine is a *verifiable property*** — the no-model invariant is enforced by a CI guard that fails the build if `src/` references an LLM SDK (`@anthropic`, `openai`), a model-call pattern (`api.anthropic.com`, `claude -p`), `fetch(`, or a tokenizer/pricing symbol. It is a deny-list of model/network-call tells, not a proof of zero egress.
-- **The adversarial verifier outranks the generator** — on a CRITICAL gate the judging model tier is pinned ≥ the generator's and never downgrades; `G_REVIEW_BLOCK` (not the agent) decides. The verifier can even be a *different vendor*: `/codex-review` runs OpenAI Codex against Claude's code **natively** (no third-party plugin), the strongest verifier ≠ generator, feeding the same gate.
-- **Spec↔build divergence is a first-class, typed loop** (`spin spec-drift`) — a green build can't silently leave a false spec behind once the correction is disclosed.
-- **Human sign-off is the seam applied to approval** — `G_SHIP` blocks until `spin approve` records a human, and `spin approve` refuses unless stdin is an interactive TTY. An automated agent cannot fake the approval, and any later edit (`spin invalidate`) voids it.
+Open your assistant from the project root and invoke Spindle:
 
-> **Honest limit (on the record):** gates certify *structure and identity, not truth*. The spine can prove a file exists, a criterion is `passed`, a verifier is cited, the criteria sets are consistent — it **cannot** prove a CRC value is correct or that a non-executable prose claim is true. Spindle makes confidence *checkable*; it does not make meaning self-verifying. See [`docs/DOGFOOD_LOG_pix-brcode.md`](docs/DOGFOOD_LOG_pix-brcode.md) for where exactly that line falls.
+| Assistant | Invoke | Project file |
+|---|---|---|
+| Codex | `$spindle-workflow` | `.agents/skills/spindle-workflow/SKILL.md` |
+| Claude Code | `/spindle-claude-workflow` | `.claude/skills/spindle-claude-workflow/SKILL.md` |
+| Gemini CLI | `/spindle` | `.gemini/commands/spindle.toml` |
+| Cursor | `/spindle-workflow` | `.agents/skills/spindle-workflow/SKILL.md` |
+| Other assistants with local file and shell access | Ask it to read and follow `.spindle/harness-workflow.md` | `.spindle/harness-workflow.md` |
+
+Ask the assistant to start the SDD workflow for `payments-reconciliation`, or ask it to show the next step in an existing run. When switching assistants, use the same checkout and ask the new assistant to resume. Each checkout has one active run. Use one orchestrating session at a time so each phase sees the current ledger.
+
+Use `--target codex`, `claude`, `gemini`, `cursor`, or `portable` to install for a single environment. Rerun the installer to update. It checks for conflicts and preserves locally edited integration files. If the project ignores `.spindle/`, each teammate runs the installer in their own checkout to get the local runtime.
+
+The portable workflow covers brainstorm, define, design, build, ship, iteration, and status. The [native Claude Code plugin](#native-claude-code-plugin) also includes audit, knowledge-base authoring, specialist workflows, and cross-vendor review.
+
+## What Spindle checks
+
+- **Acceptance criteria carry through the build.** Define assigns IDs such as `AC-1`. The build report records results against those IDs. `G_BUILD` checks for missing criteria and undeclared criteria reported as passed. It can require a verifier reference and block when supplied CI evidence reports a failed verification.
+- **Spec corrections stay visible.** A build can record that it corrected a criterion. `G_SHIP` blocks while any recorded correction remains unreconciled.
+- **Shipping requires a sign-off.** The developer runs `spin approve` from an interactive terminal. `G_SHIP` checks the recorded approval. `spin invalidate` clears approval and gate verdicts and reopens the affected work.
+- **The project keeps the evidence.** `.spindle/` holds the editable workflow, Markdown artifacts, JSON handoffs, and the run-ledger. `spin trace` shows recorded completions, gate verdicts, retries, and approval.
+
+The assistant authors specs, implementation, and evidence. The model-free `spin` CLI validates handoffs and returns an exit code deciding whether the workflow can advance. The checks cover file references, criteria consistency, and structured evidence. Correctness still depends on meaningful tests and review. The approval command checks for an interactive terminal. Teams that need to authenticate a reviewer should use their repository’s review controls. See [STATUS.md](STATUS.md) and the [PIX reconciliation dogfood log](docs/DOGFOOD_LOG_pix-brcode.md).
 
 ---
 
-## The hard-seam doctrine
+## The workflow boundary
 
+```text
+Codex · Claude Code · Gemini CLI · Cursor · other assistants
+                │ author artifacts and call spin
+                ▼
+             spin CLI
+                │ validate handoffs, enforce gates, record verdicts
+                ▼
+        Project files and .spindle/
 ```
-spin  ─── deterministic spine ───  never calls a model
-                │
-          exit code (0/1/2/3)
-                │
-     slash commands branch here
-                │
-         Claude (worker agents)
-         spawned via Task tool
-```
 
-`spin` is a pure state machine: it reads `.spindle/run.json`, applies Kahn ordering, validates handoffs against JSON schemas, enforces gates, and exits with a code. It never touches an inference endpoint. The slash commands (`/brainstorm`, `/define`, `/design`, `/build`, `/ship`, `/iterate`, `/review`, `/codex-review`, `/audit`, `/migrate`, …) are the only place a model runs — they call `spin` for every ordering, validation, and gate decision, then branch strictly on the exit code.
-
-**Fake-dispatch anti-pattern (never do this):** dispatching a model from Node, calling `spin` to "help" an LLM decide, or advancing state without `spin complete --handoff`. Every gate is an exit code. Every state change is written by `spin`, not by Claude.
+`spin` reads `.spindle/run.json`, orders work using the artifact graph, validates handoffs against JSON schemas, and records gate verdicts. It runs locally and never calls a model. Assistants branch on the CLI exit code for ordering, validation, and phase transitions. Only `spin` writes the run-ledger.
 
 ---
 
@@ -47,8 +66,8 @@ Routing *predicts*, gates *block* — and a third deterministic layer **measures
 - **`spin eval`** — replays a corpus of recorded fixtures through the **real** gate functions; a gate that stops blocking what it used to block is a regression CI catches, with no model and no network. `--strict` is fail-closed on incomplete coverage — and the bundled corpus now covers **all 11 registry gates** with a pass *and* a block fixture, so `npm run eval` runs `--strict` green in CI (a new gate without fixtures fails the build).
 - **`spin budget`** — reconciles model-reported token spend per tier against an optional ceiling. **Accounting, not enforcement** by default: advisory, exit 0 — the spine cannot independently verify a self-reported count. `--enforce` is the opt-in ceiling (flag or `config.max_tokens`): exit 1 on overage, and the output always carries `self_reported: true` so nobody mistakes it for measured spend.
 - **`spin route --stats`** — advisory per-tier accounting aggregated from the ledger (completions, reported tokens, retries per artifact). Same doctrine: it informs routing-table edits, it never enforces.
-- **`spin doctor`** — read-only orientation: node version, run health, schema validity, gate verdicts, and the exact next slash command to run. The first-run entry point.
-- **`spin verify-self`** — recomputes sha256 over both built CLI bundles and every schema file against `verification/checksums.json` (written at build). The "dist is build output, never hand-edit" invariant becomes checkable, with node builtins only.
+- **`spin doctor`** — read-only orientation: node version, run health, schema validity, gate verdicts, and the suggested next phase. Use the installed assistant entry point above to request that phase.
+- **`spin verify-self`** in the Spindle source checkout recomputes sha256 over both built CLI bundles and every schema file against `verification/checksums.json` (written at build). The "dist is build output, never hand-edit" invariant becomes checkable, with node builtins only.
 
 See [`docs/MEASUREMENT.md`](docs/MEASUREMENT.md) for the doctrine and its honest limits.
 
@@ -56,20 +75,20 @@ See [`docs/MEASUREMENT.md`](docs/MEASUREMENT.md) for the doctrine and its honest
 
 ## Install
 
-### Option A — Claude Code plugin (persistent install)
+### Native Claude Code plugin
 
-Register the bundled marketplace and install from it — this survives session restarts:
+Register the bundled marketplace and install the plugin:
 
 ```bash
 git clone https://github.com/ivisribeiro/spindle.git
 cd spindle
-claude plugins marketplace add ./.claude-plugin   # register local marketplace once
-claude plugins install spindle                    # install persistently (user scope)
+claude plugin marketplace add ./
+claude plugin install spindle@spindle
 ```
 
 `plugin/` ships the prebuilt, self-contained `dist/cli/index.js` (deps inlined,
 runs offline) and `schemas/`, so the slash commands work with no `npm install`.
-All commands invoke the CLI as:
+The native plugin's commands invoke the CLI as:
 
 ```bash
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js <args>
@@ -80,7 +99,7 @@ The documented shorthand throughout this README is `spin <args>`.
 > **Session-only alternative** (`--plugin-dir`): `claude --plugin-dir ./spindle/plugin`
 > loads the plugin for that session only and does not persist across restarts.
 
-### Option B — build from source / use the CLI directly
+### Build from source or use the CLI directly
 
 ```bash
 git clone https://github.com/ivisribeiro/spindle.git
@@ -88,12 +107,9 @@ cd spindle && npm install && npm run build
 node bin/spin.js <args>      # the `spin` CLI
 ```
 
-> Marketplace install (`claude plugin add …`) and an `npx` package are planned
-> once published; the two paths above are the supported install methods today.
+### Use the bundled CLI
 
-### Option C — prebuilt dist (embed in your repo)
-
-Copy `dist/` into your project and invoke `node dist/cli/index.js` directly. Pin the version in your lockfile.
+Invoke `node /path/to/spindle/bin/spin.js` from your project root to use the checkout’s bundled CLI and schemas. A project installed with `spindle-install` can use `node .spindle/harness/bin/spin.js`. In the examples below, `spin` stands for your installed CLI.
 
 ---
 
@@ -118,13 +134,13 @@ Copy `dist/` into your project and invoke `node dist/cli/index.js` directly. Pin
 | `spin config-drift --declared a,b --present a` | Tools required by CI but absent from the lockfile | 0 / 1 |
 | `spin spec-drift --build f.json` | Acceptance criteria the build CORRECTED vs DEFINE (`corrected_spec`) — a false spec can't ride a green build | 0 / 1 |
 | `spin schema show\|validate [handoffId]` | Inspect/validate the active schema; `show <handoff-id>` describes a handoff JSON shape | 0 / 1 / 2 |
-| `spin approve [--by <name>]` | Record human sign-off (required by `G_SHIP`). **Refuses unless run in an interactive TTY** — an agent cannot approve. No bypass flag | 0 / 2 |
+| `spin approve [--by <name>]` | Record human sign-off (required by `G_SHIP`). **Refuses unless run in an interactive TTY** — the workflow asks the human to run it | 0 / 2 |
 | `spin invalidate <id>` | After an `/iterate` edit: drop `<id>` + its downstream closure from the ledger and void all gate verdicts + approval, so no stale-green survives | 0 / 2 |
 | `spin trace [--verify]` | Print the run-ledger timeline (`events[]`) + a tier/token summary — a pure read. `--verify` walks the event hash chain: exit 1 names the first broken link | 0 / 1 |
 | `spin eval [--strict]` | Replay the eval corpus through the **real** gates; exit 1 on any verdict regression. `--strict` also fails if a registry gate lacks a pass+block fixture | 0 / 1 |
 | `spin budget [--max-tokens n] [--enforce]` | Reconcile reported token spend per tier vs an optional ceiling. Advisory by default (exit 0); `--enforce` (flag or `config.max_tokens` ceiling) exits 1 on overage, always marked `self_reported: true` | 0 / 1 / 2 |
 | `spin fanout-check [--manifest f] [--handoffs d]` | Ledger mode: assert no `parallel_group` is partially complete. File mode (`--manifest`): compare the design manifest to per-file `build-task` sidecars — `missing[]` is the exact re-dispatch payload for a dropped build worker | 0 / 1 / 2 |
-| `spin doctor` | Read-only orientation: env, run health, schema validity, and the exact next slash command — a report, never a block | 0 |
+| `spin doctor` | Read-only orientation: env, run health, schema validity, and suggested next phase | 0 |
 | `spin verify-self` | Recompute sha256 of both dist bundles + all schemas vs `verification/checksums.json`; exit 1 names tampered/missing files | 0 / 1 / 2 |
 | `spin merge-findings <files...> [--out f]` | Deterministically merge N finding files (dedup by file+line+rule, keep higher severity, aggregate `sources`) into one `{findings,sources}` for `G_REVIEW_BLOCK` | 0 / 1 |
 | `spin kb-install <domain> [--from][--dest]` | Publish a generated KB domain (flat layout) from `.spindle/` into `plugin/kb/` so `kb_domains` resolves; pure file copy | 0 / 1 / 2 |
@@ -143,7 +159,7 @@ Gates are run via `spin gate <id>`. A command that receives exit 1 surfaces `{ga
 | `G_DEFINE` | `/design` | DEFINE sections present (`Why`/`What`/`Acceptance Criteria`), define handoff valid, optional clarity floor met |
 | `G_DESIGN` | `/build` | DESIGN sections present (`Overview`/`File Manifest`/`Decisions`), a file-manifest table present, design handoff valid |
 | `G_BUILD` | `/ship` | Every manifest file exists on disk; every DEFINE criterion `passed`; **no phantom criterion** (a `passed` AC-n DEFINE never declared → set-drift); a cited `verified_by` file must exist; **a passed criterion whose CI verifier reported `failed` blocks** (the spine reads the CI result, never runs the verifier); when `config.require_verified_by`, every passed criterion must cite a verifier; manifest/`verified_by` paths must stay inside the project root (no `..` escape); when a CI `coverage` summary is reported, its `pct` must meet its `threshold`; BUILD_REPORT present |
-| `G_SHIP` | publish | DEFINE criteria minus build.passed must be empty; no phantom criterion; **unreconciled spec-drift blocks** — a build that CORRECTED a criterion emits a `spec-drift:<AC>` unmet entry per affected criterion until DEFINE is reconciled (`reconciled: true`); **a human approval must be recorded via `spin approve`** — the seam applied to sign-off: a model cannot approve |
+| `G_SHIP` | publish | DEFINE criteria minus build.passed must be empty; no phantom criterion; **unreconciled spec-drift blocks** — a build that CORRECTED a criterion emits a `spec-drift:<AC>` unmet entry per affected criterion until DEFINE is reconciled (`reconciled: true`); **a human approval must be recorded via `spin approve`** in an interactive terminal |
 | `G_KB_STRUCTURE` | KB publish | KB structure checks |
 | `G_KB_COVERAGE` | KB publish | KB coverage checks |
 | `G_ROUTER_COVERAGE` | router validate | Agent→routing bijection, no silent skips |
@@ -171,7 +187,7 @@ Workers write a JSON sidecar matching one of these schema IDs; the slash command
 
 ## Model routing
 
-`spin route <taskKind>` returns the right tier. Commands use this to pick which model to dispatch each worker on.
+`spin route <taskKind>` returns the right tier. The native Claude Code plugin uses this to select a model tier. In the portable workflow, model selection and delegation depend on the host assistant.
 
 | Tier | Task kinds |
 |---|---|
@@ -183,7 +199,9 @@ Workers write a JSON sidecar matching one of these schema IDs; the slash command
 
 ---
 
-## Quickstart — the SDD cycle
+## SDD cycle reference
+
+In the portable workflow, invoke Spindle and name the phase. The slash commands below are from the native Claude Code plugin.
 
 ### 1. Initialise
 
@@ -195,10 +213,10 @@ Creates `.spindle/`, `.spindle/run.json`, `.spindle/schema.yaml` (your editable 
 
 ### 2. Brainstorm
 
-Run `/brainstorm`. The command calls `spin next` to get the ready artifact, dispatches an **Opus** worker via Task (the `define-intent` task-kind never downgrades), the worker writes `BRAINSTORM.md` (brainstorm is a no-handoff artifact), then:
+Run `/brainstorm --feature payments-reconciliation`. The command calls `spin next` to get the ready artifact, dispatches an **Opus** worker via Task (the `define-intent` task-kind never downgrades), the worker writes `BRAINSTORM.md` and a discovery summary in `.handoffs/brainstorm.json`. With the default SDD schema the orchestrator records completion with:
 
 ```bash
-spin complete brainstorm   # refuses (exit 1) if BRAINSTORM.md is not on disk — no-handoff ≠ no-output
+spin complete brainstorm   # requires BRAINSTORM.md
 ```
 
 ### 3. Define
@@ -242,11 +260,11 @@ When `build` completes, `spin gate G_BUILD` must pass before `/ship` is allowed.
 Run `/ship`. A human must sign off **first** — in an interactive terminal:
 
 ```bash
-spin approve --by "$USER"   # refuses unless stdin is a TTY — an agent cannot fake this
-spin gate G_SHIP            # blocks unless an approval is on record (and is cleared by any later edit)
+spin approve --by "$USER"   # requires interactive stdin
+spin gate G_SHIP            # requires approval on record
 ```
 
-Exit 0 → the command assembles the SHIP doc and marks the feature complete. The approval is **stateful**: re-gating or `spin invalidate` voids it, so a post-approval edit forces a fresh sign-off.
+Exit 0 → the command assembles the SHIP doc and marks the feature complete. Use `spin invalidate` when reopening a completed artifact so the affected work requires a fresh gate verdict and approval.
 
 ---
 
@@ -257,7 +275,7 @@ Every workflow command follows these five steps — this is the whole mechanism:
 ```
 1. spin next               → ready artifacts + model hints
 2. spin route <kind>       → tier/model for each artifact
-3. Task (worker)          → writes artifact + handoff sidecar
+3. Author or delegate     → write artifact + handoff sidecar
 4. spin complete <id> --handoff <sidecar>
       exit 1 → spin retry <id> --inc / --ok (bounded)
 5. spin gate <gateId>
@@ -271,7 +289,7 @@ Deterministic decisions live in `spin`. Authoring lives in workers. Control flow
 
 ## Flows
 
-Five journeys cover essentially all use. In every one, `spin` decides and the model authors; the arrows are exit-code branches, not suggestions.
+These flows show the portable SDD lifecycle and additional workflows available in the native Claude Code plugin.
 
 ### 1 — Greenfield SDD cycle
 
@@ -281,8 +299,8 @@ The spine from idea to shipped feature. Each `spin gate` is a hard stop; `spin a
 /brainstorm ──▶ /define ──▶ /design ──▶ /build ──────▶ /ship
      │            │            │           │              │
   BRAINSTORM   G_DEFINE     G_DESIGN    G_BUILD        G_SHIP
-   + define    (sections,   (manifest,  (files exist,  (criteria met,
-    handoff     AC ids)      handoff)    AC met, CI     spec-drift clean,
+   + summary   (sections,   (manifest,  (files exist,  (criteria met,
+                AC ids)      handoff)    AC met, CI     spec-drift clean,
                                          verifier ok)   HUMAN APPROVAL)
                                             │              ▲
                                             │        spin approve  (TTY-only)
@@ -406,12 +424,12 @@ After editing, run `spin schema validate` before running any workflow command. T
 
 ## Test and CI story
 
-The harness ships with **420 unit, integration, and end-to-end tests** across 45 files (run `npm test`) covering:
+Run `npm test` for unit, integration, and end-to-end coverage of:
 
 - Kahn ordering correctness under all dependency topologies (incl. `getDownstream` closure)
 - Gate pass/block logic for every gate ID — phantom-criterion, evidence, CI-verifier-failed, `require_verified_by`, and the `G_SHIP` human-approval requirement
 - The `/iterate` cascade: `spin invalidate` drops the downstream closure and voids all verdicts + approval
-- Human approval is TTY-gated: `spin approve` refuses a non-interactive stdin (an agent cannot fake it)
+- Interactive approval: `spin approve` refuses non-interactive stdin
 - Handoff schema validation for all 10 schema IDs
 - Exit-code ABI conformance
 - `spin eval` replays the corpus through the real gates so a gate that stops blocking is a caught regression
@@ -435,7 +453,7 @@ Add to your pipeline:
 - run: npm test
 ```
 
-No model credentials needed — all tests are deterministic. The no-model-calls guard will catch any accidental inference import introduced in a future change.
+No model credentials needed — all tests are deterministic. The no-model-calls guard checks source for known inference imports and network-call patterns.
 
 ### Gating a project that uses spindle
 

@@ -1,10 +1,11 @@
 {
   "name": "spindle",
   "version": "0.2.0",
-  "description": "A deterministic, testable orchestration spine (the spin CLI) for spec-driven development in Claude Code — the CLI never calls a model; slash commands orchestrate Claude around CLI-enforced gates.",
+  "description": "A deterministic workflow for spec-driven development with Codex, Claude Code, Gemini CLI, and Cursor. The spin CLI validates artifacts and enforces phase gates.",
   "type": "module",
   "bin": {
-    "spin": "./bin/spin.js"
+    "spin": "./bin/spin.js",
+    "spindle-install": "./bin/spindle-install.js"
   },
   "files": [
     "bin",
