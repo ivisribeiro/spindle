@@ -1,18 +1,33 @@
 # Spindle
 
-**A shared spec-to-ship workflow for AI coding assistants.** Start a feature in one assistant, continue it in another, and review the same acceptance criteria, test references, and gate decisions in the project.
+**Carry one specification from Define to Ship across AI coding assistants.**
+Codex, Claude Code, Gemini CLI, and Cursor can resume the same project
+checkpoint with its acceptance criteria, evidence, and gate decisions intact.
 
-Spindle is for developers and teams shipping changes that need a reviewable record of what was agreed, built, and checked. For example, define a payments reconciliation feature in Gemini CLI with `AC-1` requiring duplicate imports to leave balances unchanged. Implement it in Cursor and record the test against `AC-1` in the build report. A reviewer on Codex or Claude Code can find the criterion, its test reference, and the gate verdict in the same checkout.
+[Quickstart](#start-here) · [What gets checked](#what-spindle-checks) · [Reflection](#reflection-and-adversarial-review) · [CLI reference](#command-surface)
+
+```mermaid
+flowchart LR
+    A["Define<br/>Acceptance criteria"] -->|G_DEFINE| B["Design<br/>File manifest"]
+    B -->|G_DESIGN| C["Build<br/>Code and test evidence"]
+    C -->|G_BUILD| D["Interactive approval<br/>Snapshot of reviewed files"]
+    D -->|G_SHIP| E["Ship<br/>Archive and lessons"]
+```
+
+In a payments importer, `AC-1` can require a replayed payment to leave the
+balance unchanged. One assistant records the criterion, another builds and
+tests it, and a reviewer follows the same ID through the handoff and build
+report.
 
 ## Start here
 
-Requires Node.js 20.19 or newer. Clone Spindle, then install into the project where you want to use it:
+Requires Node.js 20.19 or newer. Use the multi-harness branch and install into an existing project:
 
 ```bash
-git clone https://github.com/ivisribeiro/spindle.git
-node ./spindle/bin/spindle-install.js --target all --root /path/to/your/project
-cd /path/to/your/project
-node .spindle/harness/bin/spin.js doctor
+git clone --branch codex/multi-harness https://github.com/ivisribeiro/spindle.git
+node ./spindle/bin/spindle-install.js --target all --root "/path/to/your/project"
+cd "/path/to/your/project"
+node .spindle/harness/bin/spin.js init --schema sdd --feature payments-reconciliation
 ```
 
 Open your assistant from the project root and invoke Spindle:
@@ -25,7 +40,7 @@ Open your assistant from the project root and invoke Spindle:
 | Cursor | `/spindle-workflow` | `.agents/skills/spindle-workflow/SKILL.md` |
 | Other assistants with local file and shell access | Ask it to read and follow `.spindle/harness-workflow.md` | `.spindle/harness-workflow.md` |
 
-Ask the assistant to start the SDD workflow for `payments-reconciliation`, or ask it to show the next step in an existing run. When switching assistants, use the same checkout. Ask for `status` to inspect the run or `resume` to continue the earliest unfinished main phase. Each checkout has one active run. Use one orchestrating session at a time so each phase sees the current ledger.
+Try `$spindle-workflow define` in Codex with a feature brief. Open Claude Code in the same checkout and run `/spindle-claude-workflow resume` to continue the earliest unfinished main phase. Use `status` to inspect the run without advancing it. Each checkout has one active run. Use one orchestrating session at a time so each phase sees the current ledger.
 
 Use `--target codex`, `claude`, `gemini`, `cursor`, or `portable` to install for a single environment. Rerun the installer to update. It checks for conflicts and preserves locally edited integration files. If the project ignores `.spindle/`, each teammate runs the installer in their own checkout to get the local runtime.
 
@@ -44,17 +59,52 @@ The assistant authors specs, implementation, and evidence. The model-free `spin`
 
 ## The workflow boundary
 
-```text
-Codex · Claude Code · Gemini CLI · Cursor · other assistants
-                │ author artifacts and call spin
-                ▼
-             spin CLI
-                │ validate handoffs, enforce gates, record verdicts
-                ▼
-        Project files and .spindle/
-```
+The assistant writes files and evidence. The local `spin` CLI validates them
+and provides the gate verdicts that determine which phase can advance.
 
 `spin` reads `.spindle/run.json`, orders work using the artifact graph, validates handoffs against JSON schemas, and records gate verdicts. It runs locally and never calls a model. Assistants branch on the CLI exit code for ordering, validation, and phase transitions. Only `spin` writes the run-ledger.
+
+---
+
+## Reflection and adversarial review
+
+Reflection starts with an observable failure. The prompt eval runner records
+what the assistant left on disk and grades the ledger, the preserved Define
+files, the Design handoff, and the next ready phase. For a recognized failure,
+it proposes one small prompt amendment and compares it with the original on
+copies of the same Define checkpoint.
+
+```mermaid
+flowchart LR
+    A["Define checkpoint"] --> B["Run current prompt"]
+    B --> C{"Recognized failure?"}
+    C -->|Yes| D["Propose one amendment"]
+    A --> E["Run candidate from same checkpoint"]
+    D --> E
+    E --> F["Compare results and review"]
+    C -->|No| G["Keep the current prompt"]
+```
+
+The runner writes a comparison report and, when eligible, a candidate file.
+A maintainer reviews any change before it reaches the distributed prompt.
+
+```bash
+node scripts/prompt-eval.mjs --mode fixture --out ./reflection-fixture
+node scripts/prompt-eval.mjs --mode live --out ./reflection-live
+```
+
+Use fresh output directories. Fixture mode injects a missing Design handoff
+and tests the repair mechanism without a model. Live mode requires working
+Codex and Claude Code credentials. In the recorded live run, Codex completed
+Define and Claude Code stopped at provider authentication. The candidate passed
+three simulated comparisons. Live prompt improvement remains unverified.
+See [measurement and live setup](docs/MEASUREMENT.md#prompt-evaluation-across-assistants).
+
+For an independent code review, the native Claude plugin exposes `/review`
+and the optional `/codex-review`. These routes produce findings for
+`G_REVIEW_BLOCK`. They review code changes. The prompt eval runner scores
+the outcome of resuming a workflow.
+See [cross-vendor review](docs/codex-review.md).
 
 ---
 
@@ -328,27 +378,15 @@ The spine from idea to shipped feature. Each `spin gate` is a hard stop; `spin a
 
 ### 3 — Build hardening: tests + cross-vendor review + human sign-off
 
-Three independent checks stand between a green build and a ship, each a different *verifier ≠ generator*: the CI verifier, an adversarial reviewer (Claude **and/or** OpenAI Codex, natively), and a human.
+The standard Ship path checks Build, an interactive approval bound to the
+declared files, and `G_SHIP`. CI can report observed verifier results through
+`verified_by_result`. A failed result blocks Build.
 
-```
-build worker ─▶ code + tests + build-report (verified_by + CI verified_by_result)
-                     │
-                     ▼
-              spin gate G_BUILD ──▶ blocks a passed criterion whose CI verifier FAILED
-                     │
-        ┌────────────┴─────────────┐
-        ▼                          ▼
-   /review  (Claude)        /codex-review  (OpenAI Codex, opt-in, fail-open)
-   findings (source=claude) findings (source=codex)
-        └─────────┬──────────────┘
-                  ▼
-        spin merge-findings  ──▶  spin gate G_REVIEW_BLOCK
-         (dedup, keep severity)    (surviving CRITICAL > 0 → BLOCK;
-                                    --min-sources to require >1 vendor)
-                  │
-                  ▼
-        spin approve (human, TTY) ──▶ spin gate G_SHIP ──▶ /ship
-```
+For an additional review, run the native `/review` or `/codex-review`
+command. `G_REVIEW_BLOCK` blocks surviving critical findings when invoked.
+`spin merge-findings` deduplicates findings and retains the higher severity.
+The optional `--min-sources` floor counts distinct source labels. Reviewer
+independence depends on which reviewers actually ran.
 
 ### 4 — Iterate cascade (no stale-green)
 
@@ -430,7 +468,7 @@ Run `npm test` for unit, integration, and end-to-end coverage of:
 - Gate pass/block logic for every gate ID — phantom-criterion, evidence, CI-verifier-failed, `require_verified_by`, and the `G_SHIP` human-approval requirement
 - The `/iterate` cascade: `spin invalidate` drops the downstream closure and voids all verdicts + approval
 - Interactive approval: `spin approve` refuses non-interactive stdin
-- Handoff schema validation for all 10 schema IDs
+- Handoff schema validation for the registered schema IDs
 - Exit-code ABI conformance
 - `spin eval` replays the corpus through the real gates so a gate that stops blocking is a caught regression
 - **No-model-calls guard** — the test suite asserts that no `spin` code path imports or invokes an inference SDK. This is enforced as a hard test failure, not a lint warning.
@@ -441,17 +479,13 @@ Run `npm test` for unit, integration, and end-to-end coverage of:
 ### Run locally
 
 ```bash
+npm ci
+npm run build
 npm test
+npm run eval
 ```
 
-### CI
-
-Add to your pipeline:
-
-```yaml
-- run: npm ci
-- run: npm test
-```
+The repository runs these checks in [CI](.github/workflows/ci.yml).
 
 No model credentials needed — all tests are deterministic. The no-model-calls guard checks source for known inference imports and network-call patterns.
 
