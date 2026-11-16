@@ -556,10 +556,25 @@ export function nextHandler(root: string): HandlerResult {
     const a = graph.getArtifact(id)!;
     ready.push({ id, model: a.model ?? null, parallel_group: a.parallel_group ?? null });
   }
+  const blockedArtifacts = graph.getBlocked(ledger);
+  const resumeArtifacts = ['define', 'design', 'build', 'ship'].map((id) => graph.getArtifact(id));
+  const supportsResume = state.schema === 'sdd' && resumeArtifacts.every((artifact) => artifact !== undefined);
+  const phase = supportsResume ? resumeArtifacts.find((artifact) => artifact && !ledger.has(artifact.id)) : undefined;
+  const resume = phase ? {
+    phase: phase.id,
+    status: gateBlocked[phase.id] ? 'gate-blocked' : blockedArtifacts[phase.id] ? 'dependency-blocked' : 'ready',
+    required_gates: graph.getRequiredGatesBefore(phase.id),
+    blocked_by: gateBlocked[phase.id] ?? blockedArtifacts[phase.id] ?? [],
+    artifact_path: path.relative(root, path.join(featureDir(root, state.feature), phase.generates)),
+    handoff_path: phase.handoff
+      ? path.relative(root, path.join(handoffDir(root, state.feature), `${phase.id}.json`))
+      : null,
+  } : { phase: null, status: supportsResume ? 'complete' : 'unsupported' };
   return ok({
     feature: state.feature,
     ready,
-    blocked: graph.getBlocked(ledger),
+    blocked: blockedArtifacts,
+    resume,
     gate_blocked: gateBlocked,
     detected_on_disk: detectedOnDisk,
     // A run is complete only when every artifact is done AND every terminal gate is green —
@@ -693,10 +708,20 @@ export function completeHandler(
     }
   }
 
-  const state = markComplete(root, id, reportedUsage);
+  // Portable Design completes and records its verdict in a single ledger write.
+  // Some hosts skip the separate gate command even when their summary claims it passed.
+  const designGate = id === 'design' && ledger.schema === 'sdd' &&
+    graph.getRequiredGatesBefore('build').includes('G_DESIGN')
+    ? runGate('G_DESIGN', buildGateContext(root))
+    : undefined;
+  const state = markComplete(
+    root, id, reportedUsage,
+    designGate ? { id: 'G_DESIGN', verdict: designGate } : undefined
+  );
   return ok({
     completed: id,
     runState: state,
+    ...(designGate ? { design_gate: designGate } : {}),
     ...(unknownKeys && unknownKeys.length > 0 ? { unknown_keys: unknownKeys } : {}),
   });
 }

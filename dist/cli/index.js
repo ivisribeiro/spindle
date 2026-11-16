@@ -13787,15 +13787,15 @@ var require_pattern = __commonJS({
     exports.removeDuplicateSlashes = removeDuplicateSlashes;
     function partitionAbsoluteAndRelative(patterns) {
       const absolute = [];
-      const relative3 = [];
+      const relative4 = [];
       for (const pattern of patterns) {
         if (isAbsolute4(pattern)) {
           absolute.push(pattern);
         } else {
-          relative3.push(pattern);
+          relative4.push(pattern);
         }
       }
-      return [absolute, relative3];
+      return [absolute, relative4];
     }
     exports.partitionAbsoluteAndRelative = partitionAbsoluteAndRelative;
     function isAbsolute4(pattern) {
@@ -20393,12 +20393,13 @@ function markApproved(root, by, snapshot) {
   state.events = appendEvent(state, { kind: "approve", at, by });
   return saveRunState(root, state);
 }
-function markComplete(root, id, usage2) {
+function markComplete(root, id, usage2, gate) {
   const state = loadRunState(root);
   if (!state.completed.includes(id)) {
     state.completed = [...state.completed, id].sort();
     state.events = appendEvent(state, { kind: "complete", at: nowIso(), id, ...usage2 ? { usage: usage2 } : {} });
   }
+  if (gate) applyGateRecord(state, gate.id, gate.verdict);
   return saveRunState(root, state);
 }
 function invalidate(root, ids) {
@@ -20423,6 +20424,10 @@ function incRetry(root, id) {
 }
 function recordGate(root, gateId, record) {
   const state = loadRunState(root);
+  applyGateRecord(state, gateId, record);
+  return saveRunState(root, state);
+}
+function applyGateRecord(state, gateId, record) {
   const at = nowIso();
   const reasons = record.reasons ?? [];
   state.gates = { ...state.gates, [gateId]: { passed: record.passed, reasons, at } };
@@ -20434,7 +20439,6 @@ function recordGate(root, gateId, record) {
   if (changed) {
     state.events = appendEvent(state, { kind: "gate", at, gate: gateId, passed: record.passed, reasons });
   }
-  return saveRunState(root, state);
 }
 function completedSet(root) {
   return new Set(loadRunState(root).completed);
@@ -23602,10 +23606,23 @@ function nextHandler(root) {
     const a = graph.getArtifact(id);
     ready.push({ id, model: a.model ?? null, parallel_group: a.parallel_group ?? null });
   }
+  const blockedArtifacts = graph.getBlocked(ledger);
+  const resumeArtifacts = ["define", "design", "build", "ship"].map((id) => graph.getArtifact(id));
+  const supportsResume = state.schema === "sdd" && resumeArtifacts.every((artifact) => artifact !== void 0);
+  const phase = supportsResume ? resumeArtifacts.find((artifact) => artifact && !ledger.has(artifact.id)) : void 0;
+  const resume = phase ? {
+    phase: phase.id,
+    status: gateBlocked[phase.id] ? "gate-blocked" : blockedArtifacts[phase.id] ? "dependency-blocked" : "ready",
+    required_gates: graph.getRequiredGatesBefore(phase.id),
+    blocked_by: gateBlocked[phase.id] ?? blockedArtifacts[phase.id] ?? [],
+    artifact_path: path15.relative(root, path15.join(featureDir(root, state.feature), phase.generates)),
+    handoff_path: phase.handoff ? path15.relative(root, path15.join(handoffDir(root, state.feature), `${phase.id}.json`)) : null
+  } : { phase: null, status: supportsResume ? "complete" : "unsupported" };
   return ok({
     feature: state.feature,
     ready,
-    blocked: graph.getBlocked(ledger),
+    blocked: blockedArtifacts,
+    resume,
     gate_blocked: gateBlocked,
     detected_on_disk: detectedOnDisk,
     // A run is complete only when every artifact is done AND every terminal gate is green —
@@ -23703,10 +23720,17 @@ function completeHandler(root, id, opts) {
       });
     }
   }
-  const state = markComplete(root, id, reportedUsage);
+  const designGate = id === "design" && ledger.schema === "sdd" && graph.getRequiredGatesBefore("build").includes("G_DESIGN") ? runGate("G_DESIGN", buildGateContext(root)) : void 0;
+  const state = markComplete(
+    root,
+    id,
+    reportedUsage,
+    designGate ? { id: "G_DESIGN", verdict: designGate } : void 0
+  );
   return ok({
     completed: id,
     runState: state,
+    ...designGate ? { design_gate: designGate } : {},
     ...unknownKeys && unknownKeys.length > 0 ? { unknown_keys: unknownKeys } : {}
   });
 }

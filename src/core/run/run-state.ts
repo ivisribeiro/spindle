@@ -131,7 +131,12 @@ export function markApproved(root: string, by: string, snapshot: ApprovalSnapsho
   return saveRunState(root, state);
 }
 
-export function markComplete(root: string, id: string, usage?: Usage): RunState {
+export function markComplete(
+  root: string,
+  id: string,
+  usage?: Usage,
+  gate?: { id: string; verdict: Omit<GateRecord, 'at'> }
+): RunState {
   const state = loadRunState(root);
   // Append a 'complete' event only when the id is NEWLY completed, so re-running
   // `spin complete <id>` on an already-done artifact stays idempotent on the ledger.
@@ -139,6 +144,7 @@ export function markComplete(root: string, id: string, usage?: Usage): RunState 
     state.completed = [...state.completed, id].sort();
     state.events = appendEvent(state, { kind: 'complete', at: nowIso(), id, ...(usage ? { usage } : {}) });
   }
+  if (gate) applyGateRecord(state, gate.id, gate.verdict);
   return saveRunState(root, state);
 }
 
@@ -183,6 +189,11 @@ export function incRetry(root: string, id: string): number {
 
 export function recordGate(root: string, gateId: string, record: Omit<GateRecord, 'at'>): RunState {
   const state = loadRunState(root);
+  applyGateRecord(state, gateId, record);
+  return saveRunState(root, state);
+}
+
+function applyGateRecord(state: RunState, gateId: string, record: Omit<GateRecord, 'at'>): void {
   const at = nowIso();
   const reasons = record.reasons ?? [];
   state.gates = { ...state.gates, [gateId]: { passed: record.passed, reasons, at } };
@@ -198,7 +209,6 @@ export function recordGate(root: string, gateId: string, record: Omit<GateRecord
   if (changed) {
     state.events = appendEvent(state, { kind: 'gate', at, gate: gateId, passed: record.passed, reasons });
   }
-  return saveRunState(root, state);
 }
 
 export function completedSet(root: string): Set<string> {

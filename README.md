@@ -41,7 +41,7 @@ Open your assistant from the project root and invoke Spindle:
 | Antigravity | `/spindle-workflow` | `.agents/skills/spindle-workflow/SKILL.md` |
 | Other assistants with local file and shell access | Ask it to read and follow `.spindle/harness-workflow.md` | `.spindle/harness-workflow.md` |
 
-Try `$spindle-workflow define` in Codex with a feature brief. Open Claude Code in the same checkout and run `/spindle-claude-workflow resume` to continue the earliest unfinished main phase. Use `status` to inspect the run without advancing it. Each checkout has one active run. Use one orchestrating session at a time so each phase sees the current ledger.
+Try `$spindle-workflow define` in Codex with a feature brief. Open Claude Code in the same checkout and run `/spindle-claude-workflow resume` to continue the earliest unfinished main phase. Use `status` to inspect the run without advancing it. `spin next` exposes a `resume` decision for the main SDD phases. Optional Brainstorm stays available for explicit use. Standard SDD Design completion records `G_DESIGN` alongside the phase transition. A blocked prerequisite stops Resume before it writes a new artifact. Each checkout has one active run. Use one orchestrating session at a time so each phase sees the current ledger.
 
 Use `--target codex`, `claude`, `gemini`, `cursor`, `antigravity`, or `portable` to install for a single environment. Rerun the installer to update. It checks for conflicts and preserves locally edited integration files. If the project ignores `.spindle/`, each teammate runs the installer in their own checkout to get the local runtime.
 

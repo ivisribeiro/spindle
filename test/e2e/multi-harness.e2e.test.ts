@@ -95,9 +95,55 @@ describe('project-local multi-harness installation', () => {
     expect(existsSync(join(root, adapters.gemini))).toBe(true);
     const next = run(runtime, 'next');
     expect(next.status, next.stderr).toBe(0);
-    expect(JSON.parse(next.stdout).ready).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'design' }),
-    ]));
+    expect(JSON.parse(next.stdout)).toMatchObject({
+      ready: expect.arrayContaining([
+        expect.objectContaining({ id: 'brainstorm' }),
+        expect.objectContaining({ id: 'design' }),
+      ]),
+      resume: {
+        phase: 'design',
+        status: 'ready',
+        required_gates: ['G_DEFINE'],
+        blocked_by: [],
+        artifact_path: `${feature}/DESIGN.md`,
+        handoff_path: `${feature}/.handoffs/design.json`,
+      },
+    });
     expect(readFileSync(ledger, 'utf8')).toBe(before);
+  });
+
+  it('keeps Design selected but blocked when the Define handoff omits a criterion', () => {
+    expect(run(installer, '--target', 'antigravity').status).toBe(0);
+    expect(run(runtime, 'init', '--schema', 'sdd', '--feature', 'blocked-resume').status).toBe(0);
+    const feature = '.spindle/features/blocked-resume';
+    const handoff = `${feature}/.handoffs/define.json`;
+    writeFileSync(join(root, feature, 'DEFINE.md'),
+      '## Why\nDuplicate callbacks can repeat credits.\n\n' +
+      '## What\nIgnore repeated payment IDs.\n\n' +
+      '## Acceptance Criteria\n- AC-1: A new payment credits its amount.\n' +
+      '- AC-2: A replay leaves the balance unchanged.\n');
+    writeFileSync(join(root, handoff), JSON.stringify({
+      feature: 'blocked-resume', clarity: 0.9, criteria: ['AC-1'],
+    }));
+    expect(run(runtime, 'complete', 'define', '--handoff', handoff).status).toBe(0);
+    const gate = run(runtime, 'gate', 'G_DEFINE');
+    expect(gate.status, gate.stderr).toBe(1);
+    expect(JSON.parse(gate.stdout).unmet).toContain('criteria-missing-from-handoff:AC-2');
+
+    const ledger = join(root, '.spindle/run.json');
+    const before = readFileSync(ledger, 'utf8');
+    const next = run(runtime, 'next');
+    expect(next.status).toBe(0);
+    expect(JSON.parse(next.stdout)).toMatchObject({
+      ready: [expect.objectContaining({ id: 'brainstorm' })],
+      resume: {
+        phase: 'design',
+        status: 'gate-blocked',
+        blocked_by: ['G_DEFINE'],
+        handoff_path: `${feature}/.handoffs/design.json`,
+      },
+    });
+    expect(readFileSync(ledger, 'utf8')).toBe(before);
+    expect(existsSync(join(root, feature, 'DESIGN.md'))).toBe(false);
   });
 });

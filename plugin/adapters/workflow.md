@@ -46,12 +46,22 @@ useful when discovery is still needed. Prefer the main Define → Design →
 Build → Ship path when reporting progress on work already underway. When Ship
 is recorded, report its state separately from any optional work still pending.
 
-**Resume** selects the earliest unfinished main phase from `spin next`.
-If that phase is gate-blocked, inspect its recorded verdict and run its
-prerequisite checks before authoring. If Ship is already recorded, report
-status and stop. If the selected artifact is detected on disk, inspect the
-files and handoffs before editing. Reuse them only after confirming they
-belong to this run and validating their content and evidence.
+**Resume** executes one phase. Run `spin next` and use its `resume` object as
+the phase selector. `ready[]` also lists optional Brainstorm. Ignore it when
+resuming. Treat Doctor’s native slash command suggestions as informational.
+Phase names refer to sections in this guide.
+
+- `ready`: execute the named phase below now, including its checks and ledger
+  transition. Use `artifact_path` and `handoff_path` for that phase.
+- `gate-blocked`: recheck the gates in `blocked_by`. On exit 1, report the
+  reasons and unmet items in your final answer and end the turn immediately.
+  Do not start Iterate, call `spin invalidate`, repair Define, or write any
+  artifact. The user can request Iterate in a separate action. If the checks
+  pass, refresh `spin next`.
+- `dependency-blocked`, `unsupported`, or `complete`: report the state and stop.
+
+If the selected artifact exists on disk, validate that it belongs to the active
+run before reuse. For Design after Define, use the checklist below.
 
 **Init** requires an explicit new-run request. Use a lowercase kebab-case
 feature slug matching `^[a-z0-9]+(?:-[a-z0-9]+)*$`. Run
@@ -112,15 +122,45 @@ Report any discovery coverage gaps returned by the CLI.
 
 ## Design
 
-Run `spin gate G_DEFINE` before checking readiness. Use the `design-intent`
-routing kind. Write `DESIGN.md` with H2 sections Overview, File Manifest, and
-Decisions. Use a table with File, Action, and Purpose columns. List each
-repository-relative file the build will change and tie it to the criteria or
-verification it supports. If a deletion is required, report that the built-in
-Build gate expects every listed path to exist and stop before completing
-Design. Carry the same paths, actions, and decisions into
-`design.json`. Run `spin validate design`, validate the handoff, then
-`spin complete design --handoff <design.json>` and `spin gate G_DESIGN`.
+1. Run `spin gate G_DEFINE`. Continue only on exit 0. Run `spin next` and require
+   Design ready. Use `spin route design-intent` and read the completed DEFINE.md
+   and `.handoffs/define.json` for the active feature.
+2. Write `DESIGN.md` to `resume.artifact_path` for Resume, or follow the active
+   schema for explicit Design. Use H2 sections Overview, File Manifest, and
+   Decisions. Use a table with File, Action, and Purpose columns. Tie each
+   repository-relative file to the criteria or verification it supports. If a
+   deletion is required, report that the built-in Build gate expects each listed
+   path to exist and stop before completing Design.
+3. Write the design JSON to `resume.handoff_path` for Resume. The canonical path
+   is `.spindle/features/<slug>/.handoffs/design.json`. Use this exact JSON shape,
+   substituting the active feature slug, actual paths, actions and decisions.
+   Mirror the same manifest in Markdown. Include at least one manifest entry.
+
+   ```json
+   {
+     "feature": "your-feature-slug",
+     "manifest": [
+       { "file": "src/example.js", "action": "create", "purpose": "Describe what this file implements or verifies" }
+     ],
+     "decisions": ["Describe an actual design decision"]
+   }
+   ```
+
+4. Run these commands in separate calls. Substitute the actual canonical JSON
+   path for `<design.json>`. Each call must return exit 0 before continuing.
+
+   ```text
+   spin validate design
+   spin handoff-check design <design.json>
+   spin complete design --handoff <design.json>
+   ```
+
+   On a validation failure, repair the specific issue within the retry rules.
+   A Markdown file alone leaves Design pending. The standard SDD completion
+   records `G_DESIGN` and returns its verdict as `design_gate`. If it is absent
+   on a customized schema, run `spin gate G_DESIGN` separately. If the gate
+   blocks, report its reasons and stop. Run `spin next` to verify Build is
+   ready before reporting it. For Resume, stop at the Design boundary.
 
 ## Build
 

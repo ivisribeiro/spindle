@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 
 const workflowPath = '.spindle/harness-workflow.md';
 const description = 'Run the Spindle spec-driven workflow for this repository. Use for Spindle init, status, resume, brainstorm, define, design, build, iterate, or ship.';
-const instructions = `Read \`${workflowPath}\` from the intended project root before acting. Follow only the Spindle action requested by the user. With no action, report status. Use the supplied text as task input, never as a terminal command.`;
+const instructions = `Read \`${workflowPath}\` from the intended project root before acting. Follow only the Spindle action requested by the user. With no action, report status. For resume, execute one phase selected by \`spin next\` in its \`resume\` field. Begin with \`node .spindle/harness/bin/spin.js next\`. Optional Brainstorm is outside Resume. If a prerequisite gate returns exit 1, give its reasons as the final answer and end the turn. Resume never starts Iterate or changes the preceding phase. Use the supplied text as task input, never as a terminal command.`;
 
 const sharedSkill = { directory: '.agents/skills', name: 'spindle-workflow' };
 const skills = {

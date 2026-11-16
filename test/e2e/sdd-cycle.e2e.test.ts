@@ -62,8 +62,11 @@ describe('E2E: full SDD cycle through the spin CLI', () => {
       ],
       decisions: ['use JWT'],
     });
-    expect((await R('complete', 'design', '--handoff', designHandoff)).code).toBe(0);
-    expect((await R('gate', 'G_DESIGN')).code).toBe(0);
+    const completedDesign = await R('complete', 'design', '--handoff', designHandoff);
+    expect(completedDesign.code).toBe(0);
+    expect(completedDesign.json.design_gate).toMatchObject({ gate: 'G_DESIGN', passed: true });
+    expect(completedDesign.json.runState.gates.G_DESIGN.passed).toBe(true);
+    expect((await R('next')).json.resume).toMatchObject({ phase: 'build', status: 'ready' });
 
     // --- Phase 3: build — write ONLY one of two manifest files ---
     write(root, 'src/auth.ts', '// auth\n');
@@ -182,7 +185,12 @@ describe('E2E: full SDD cycle through the spin CLI', () => {
     expect((await R('state')).json.completed).toEqual([]);
 
     expect((await R('complete', 'define', '--handoff', define)).code).toBe(0);
-    expect((await R('complete', 'design', '--handoff', design)).code).toBe(0);
+    const completedDesign = await R('complete', 'design', '--handoff', design);
+    expect(completedDesign.code).toBe(0);
+    expect(completedDesign.json.design_gate).toMatchObject({ gate: 'G_DESIGN', passed: false });
+    expect((await R('next')).json.resume).toMatchObject({
+      phase: 'build', status: 'gate-blocked', blocked_by: ['G_DESIGN'],
+    });
   });
 
   it('keeps design blocked until the spec and handoff list the same acceptance criteria', async () => {
