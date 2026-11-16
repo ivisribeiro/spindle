@@ -30,7 +30,7 @@ function commandFiles(dir: string): string[] {
   return out;
 }
 
-const files = commandFiles(COMMANDS_DIR);
+const files = [...commandFiles(COMMANDS_DIR), path.resolve(COMMANDS_DIR, '../adapters/workflow.md')];
 const REAL_GATES = new Set(listGates());
 const REAL_KINDS = new Set(listTaskKinds());
 const REAL_HANDOFFS = new Set(Object.keys(HANDOFF_SCHEMAS));

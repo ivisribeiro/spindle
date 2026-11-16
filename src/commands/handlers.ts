@@ -592,6 +592,19 @@ export function completeHandler(
     );
   }
 
+  const ledger = loadRunState(root);
+  const missingDependencies = artifact.requires.filter(
+    (dependency) => !ledger.completed.includes(dependency)
+  );
+  if (missingDependencies.length > 0) {
+    return blocked({
+      passed: false,
+      artifact: id,
+      reasons: missingDependencies.map((dependency) => `required artifact "${dependency}" is incomplete`),
+      unmet: missingDependencies,
+    });
+  }
+
   // Lifecycle gate enforcement — the seam made hard. An artifact cannot be marked
   // complete until the gate(s) the schema's `gates:` map requires BEFORE it are
   // recorded green in the ledger. The FINAL artifact additionally carries the terminal
@@ -603,7 +616,6 @@ export function completeHandler(
     ...(id === graph.getFinalArtifactId() ? graph.getTerminalGates() : []),
   ];
   if (requiredGates.length > 0) {
-    const ledger = loadRunState(root);
     const unmet = [...new Set(requiredGates)].filter((g) => ledger.gates[g]?.passed !== true);
     if (unmet.length > 0) {
       return blocked({
@@ -622,6 +634,7 @@ export function completeHandler(
   // schema silently stripped on parse (e.g. a typo like "files_writen"). Set below when
   // the artifact carries a handoff sidecar; threaded into the exit-0 result at the end.
   let unknownKeys: string[] | undefined;
+  let reportedUsage: Usage | undefined;
 
   if (artifact.handoff) {
     if (!opts.handoff) {
@@ -638,9 +651,17 @@ export function completeHandler(
       });
     }
     unknownKeys = check.unknown_keys;
+    // Read optional reported usage before normalization strips it, including
+    // when the input sidecar is already at the canonical path.
+    try {
+      const raw = JSON.parse(fs.readFileSync(opts.handoff, 'utf-8')) as { usage?: unknown };
+      const parsed = Usage.safeParse(raw.usage);
+      if (parsed.success) reportedUsage = parsed.data;
+    } catch {
+      // Usage is advisory. Its absence must not prevent artifact completion.
+    }
     // Persist the validated handoff canonically so gates read it deterministically.
-    const state = loadRunState(root);
-    const dest = path.join(handoffDir(root, state.feature), `${id}.json`);
+    const dest = path.join(handoffDir(root, ledger.feature), `${id}.json`);
     // Atomic write (tmp + rename) so a crash mid-write can't leave a partial handoff
     // that the gates would then read as invalid JSON — matches the run-ledger's writes.
     atomicWrite(dest, JSON.stringify(check.data, null, 2) + '\n');
@@ -648,7 +669,7 @@ export function completeHandler(
     // Handoff-less artifact: there is no sidecar to validate, so at minimum verify the
     // artifact actually produced its `generates` output on disk. Marking it complete with
     // no BRAINSTORM.md/SHIPPED.md/etc. hands the operator a "done" the spine never earned.
-    const outDir = featureDir(root, loadRunState(root).feature);
+    const outDir = featureDir(root, ledger.feature);
     if (!artifactOutputExists(outDir, artifact.generates)) {
       return blocked({
         gate: 'output',
@@ -659,23 +680,6 @@ export function completeHandler(
         ],
         unmet: [artifact.generates],
       });
-    }
-  }
-
-  // Opaque, model-reported usage rides on the sidecar's optional top-level `usage`
-  // key (the artifact schema strips unknown keys, so this never affects validation).
-  // The CLI only RECORDS it — it never computes or prices tokens. Usage is advisory:
-  // a malformed or absent annotation never blocks completion.
-  let reportedUsage: Usage | undefined;
-  if (opts.handoff && fs.existsSync(opts.handoff)) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(opts.handoff, 'utf-8')) as { usage?: unknown };
-      if (raw.usage !== undefined) {
-        const parsed = Usage.safeParse(raw.usage);
-        if (parsed.success) reportedUsage = parsed.data;
-      }
-    } catch {
-      /* usage is advisory; never block completion on it */
     }
   }
 

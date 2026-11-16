@@ -21406,9 +21406,7 @@ function gDefine(ctx) {
     reasons.push(`section "${issue.section}" ${issue.problem}`);
     unmet.push(`section:${issue.section}`);
   }
-  const criteriaBody = parseSections(md).find(
-    (sec) => sec.title.trim().toLowerCase() === CRITERIA_SECTION.toLowerCase()
-  )?.body;
+  const criteriaBody = parseSections(md).filter((sec) => sec.title.trim().toLowerCase() === CRITERIA_SECTION.toLowerCase()).map((sec) => sec.body).join("\n");
   if (criteriaBody) {
     for (const token of findPlaceholders(criteriaBody)) {
       reasons.push(`"${CRITERIA_SECTION}" still carries the placeholder "${token}"`);
@@ -21428,6 +21426,16 @@ function gDefine(ctx) {
     } else {
       const floor = ctx.graph?.getSchema().config?.clarity_floor;
       const data = check.data;
+      const handoffIds = [...new Set(data.criteria ?? [])];
+      const criteria = criteriaDiff(extractCriteriaIds(criteriaBody, "AC"), handoffIds);
+      for (const id of criteria.unmet) {
+        reasons.push(`acceptance criterion ${id} appears in DEFINE.md but is missing from the define handoff`);
+        unmet.push(`criteria-missing-from-handoff:${id}`);
+      }
+      for (const id of criteria.extra) {
+        reasons.push(`acceptance criterion ${id} appears in the define handoff but is missing from the DEFINE.md acceptance criteria`);
+        unmet.push(`criteria-missing-from-markdown:${id}`);
+      }
       if (typeof floor === "number" && typeof data.clarity === "number" && data.clarity < floor) {
         reasons.push(`clarity ${data.clarity} is below the configured floor ${floor}`);
         unmet.push("clarity-floor");
@@ -22580,6 +22588,7 @@ var GATE_DOCS = {
       "DEFINE.md missing on disk",
       "any required ## section absent or empty",
       "define handoff missing or invalid against the DefineHandoff schema",
+      "acceptance criterion IDs in DEFINE.md and the define handoff differ",
       "the ## Acceptance Criteria body still carries a placeholder token (TBD/TODO/FIXME/...) \u2014 always enforced",
       "the handoff clarity is below config.clarity_floor (only when that floor is set)",
       "the DETERMINISTIC discovery readiness is below config.coverage_floor (only when that floor is set) \u2014 readiness is derived by the spine from DEFINE.md + the handoff, never self-reported"
@@ -23530,12 +23539,23 @@ function completeHandler(root, id, opts) {
       `artifact "${id}" declares no handoff schema \u2014 remove --handoff (it would not be validated)`
     );
   }
+  const ledger = loadRunState(root);
+  const missingDependencies = artifact.requires.filter(
+    (dependency) => !ledger.completed.includes(dependency)
+  );
+  if (missingDependencies.length > 0) {
+    return blocked({
+      passed: false,
+      artifact: id,
+      reasons: missingDependencies.map((dependency) => `required artifact "${dependency}" is incomplete`),
+      unmet: missingDependencies
+    });
+  }
   const requiredGates = [
     ...graph.getRequiredGatesBefore(id),
     ...id === graph.getFinalArtifactId() ? graph.getTerminalGates() : []
   ];
   if (requiredGates.length > 0) {
-    const ledger = loadRunState(root);
     const unmet = [...new Set(requiredGates)].filter((g) => ledger.gates[g]?.passed !== true);
     if (unmet.length > 0) {
       return blocked({
@@ -23550,6 +23570,7 @@ function completeHandler(root, id, opts) {
     }
   }
   let unknownKeys;
+  let reportedUsage;
   if (artifact.handoff) {
     if (!opts.handoff) {
       return usage(`artifact "${id}" requires --handoff <file.json> (schema: ${artifact.handoff})`);
@@ -23565,11 +23586,16 @@ function completeHandler(root, id, opts) {
       });
     }
     unknownKeys = check.unknown_keys;
-    const state2 = loadRunState(root);
-    const dest = path14.join(handoffDir(root, state2.feature), `${id}.json`);
+    try {
+      const raw = JSON.parse(fs18.readFileSync(opts.handoff, "utf-8"));
+      const parsed = Usage.safeParse(raw.usage);
+      if (parsed.success) reportedUsage = parsed.data;
+    } catch {
+    }
+    const dest = path14.join(handoffDir(root, ledger.feature), `${id}.json`);
     atomicWrite(dest, JSON.stringify(check.data, null, 2) + "\n");
   } else {
-    const outDir = featureDir(root, loadRunState(root).feature);
+    const outDir = featureDir(root, ledger.feature);
     if (!artifactOutputExists(outDir, artifact.generates)) {
       return blocked({
         gate: "output",
@@ -23580,17 +23606,6 @@ function completeHandler(root, id, opts) {
         ],
         unmet: [artifact.generates]
       });
-    }
-  }
-  let reportedUsage;
-  if (opts.handoff && fs18.existsSync(opts.handoff)) {
-    try {
-      const raw = JSON.parse(fs18.readFileSync(opts.handoff, "utf-8"));
-      if (raw.usage !== void 0) {
-        const parsed = Usage.safeParse(raw.usage);
-        if (parsed.success) reportedUsage = parsed.data;
-      }
-    } catch {
     }
   }
   const state = markComplete(root, id, reportedUsage);

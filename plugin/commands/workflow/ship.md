@@ -3,17 +3,24 @@ name: ship
 description: Phase 4 — gate G_BUILD, diff criteria, gate G_SHIP, dispatch ship-worker (haiku), archive SHIPPED.md + lessons, complete.
 ---
 
-Run the ship phase for the current feature.
+Run the ship phase for the current feature. This archives the run. Publishing,
+merging, and deploying require their own authorization. Use `spin state` to
+resolve the active feature. Use the exit code of each invocation. Fix usage errors
+(exit 2) and halt on internal errors (exit 3).
 
 ## Steps
 
-### 1. Gate G_BUILD
+### 1. Verify the upstream gates
 
-```
+Run each gate in order and continue only on exit 0.
+
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js gate G_DEFINE
+node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js gate G_DESIGN
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js gate G_BUILD
 ```
 
-Exit 1 → STOP. Surface `reasons` and `unmet` to the user. Do not proceed until G_BUILD passes.
+Exit 1 → stop and surface `reasons` and `unmet`.
 
 Exit 0 → continue.
 
@@ -29,7 +36,7 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js diff-criteria \
   --build  .spindle/features/<feature>/.handoffs/build.json
 ```
 
-If `unmet[]` is non-empty → surface the unmet criteria to the user and STOP. Do not proceed to G_SHIP.
+Exit 1 → surface the unmet criteria to the user and STOP. Do not proceed to G_SHIP.
 
 ### 2b. Budget enforcement (optional)
 
@@ -46,58 +53,41 @@ node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js budget --enforce
 ```
 
 Exit 1 → STOP. Surface the reported spend and the ceiling (`max_tokens`,
-`ceiling_source`) to the user; the numbers are model-reported (`self_reported: true`),
-never measured, so this is a policy decision on trust — the human decides whether to
-raise `config.max_tokens`, investigate the reported usage, or proceed anyway via
-their own re-run. Do not silently continue past this stop.
+`ceiling_source`) to the user with the `self_reported` indicator. Resume
+after the user resolves the budget block.
 
-Exit 0 → continue to G_SHIP. If `config.max_tokens` is unset, skip this step
+Exit 0 → continue. If `config.max_tokens` is unset, skip this step
 entirely — `spin budget` without `--enforce` remains purely advisory and is not
 required here.
 
-### 3. Gate G_SHIP
+### 3. Diagnose spec drift before requesting approval
 
-```
-node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js gate G_SHIP
-```
-
-Exit 1 → STOP. Surface `reasons` and `unmet`.
-- `unmet` contains `approval` → a human has not signed off. **You (the agent) cannot
-  approve.** Tell the user to run `spin approve` themselves in their terminal, then re-run
-  `/ship`. `spin approve` refuses outside an interactive TTY, so this step is the human's.
-- `unmet` contains one or more `spec-drift:<AC-n>` entries → the build CORRECTED those
-  acceptance criteria (their DEFINE-stated value was wrong) and DEFINE.md is **not yet
-  reconciled**. A false spec must not ship on a green gate, so G_SHIP blocks. Surface each
-  `spec-drift:<AC-n>` entry, then reconcile via step 3b and re-run `/ship`.
-- Otherwise the define.criteria minus build.passed set is non-empty — the build did not
-  satisfy all acceptance criteria. Report which criteria are unmet and halt.
-
-Exit 0 → continue. All acceptance criteria are met, a human has approved, and no
-unreconciled spec-drift remains.
-
-### 3b. Reconcile a spec-drift block
-
-Run this **when step 3's G_SHIP blocked with one or more `spec-drift:<AC-n>` unmet
-entries.** `spin spec-drift` is the detailed diagnostic — it lists each corrected
-criterion with its `correction`:
-
-```
+```bash
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js spec-drift --build .spindle/features/<feature>/.handoffs/build.json
 ```
 
-Exit 1 → the build CORRECTED one or more criteria (`drifted[]` lists each with its
-`correction`). To reconcile:
+Exit 1 → stop shipping. If the handoff is invalid, surface `schema_errors`
+and return to Build. If `drifted[]` contains corrected criteria, present each
+criterion and its recorded correction to the user. Reconcile through
+`/iterate` within the authorized scope. Invalidate `define` before changing
+the spec, then re-complete and re-gate the affected phases. Preserve the
+correction and set `reconciled: true` in the rebuilt handoff only after the
+new DEFINE records the corrected value and the verifier passes against it.
+Request fresh approval after those gates pass.
 
-1. **Update the DEFINE.md criterion** to the correct value so the shipped spec is true.
-2. **Mark it reconciled** — set `"reconciled": true` on that criterion's result in
-   `.spindle/features/<feature>/.handoffs/build.json` (this is the acknowledgment;
-   updating DEFINE.md alone does NOT clear the flag — the drift signal lives in the
-   build report).
-3. **Re-run `/ship`** — with the correction acknowledged, `spin spec-drift` exits 0 and
-   G_SHIP (step 3) no longer blocks on it, so the loop converges.
+Exit 0 → run the shipping gate.
 
-A feature must not ship with an unreconciled spec its own build contradicts — G_SHIP now
-enforces this at the gate; it is no longer merely advisory.
+```bash
+node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js gate G_SHIP
+```
+
+Exit 1 → stop and surface `reasons` and `unmet`. For missing `approval`,
+tell the user to run `spin approve` in their own interactive terminal and
+then re-run `/ship`. The assistant never runs approval, including through
+a pseudo-terminal.
+
+Exit 0 → run `spin next` and require `ship` in `ready[]` before dispatching.
+If the ledger already records Ship, report its status and the existing archive.
 
 ### 4. Route the ship worker
 
@@ -129,8 +119,12 @@ Dispatch ONE worker via the Task tool on the model returned above. Pass it:
 
 ### 6. Complete the ship artifact
 
+Check that both archive files reflect the current build report before recording
+completion.
+
 ```
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js complete ship
 ```
 
-Report to the user: feature is SHIPPED. Cite the paths of SHIPPED.md and LESSONS.md.
+Exit 0 → report that the Spindle archive is recorded and cite both artifact
+paths. On a blocked completion, surface the CLI details and stop.

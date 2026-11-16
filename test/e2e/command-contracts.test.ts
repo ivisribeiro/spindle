@@ -38,7 +38,7 @@ function commandFiles(dir: string): string[] {
   return out;
 }
 
-const files = commandFiles(COMMANDS_DIR);
+const files = [...commandFiles(COMMANDS_DIR), path.resolve(COMMANDS_DIR, '../adapters/workflow.md')];
 
 function relFile(file: string): string {
   return path.relative(REPO_ROOT, file);

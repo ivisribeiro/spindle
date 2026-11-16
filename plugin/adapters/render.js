@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
 const workflowPath = '.spindle/harness-workflow.md';
-const description = 'Run the Spindle spec-driven workflow for this repository. Use for Spindle init, status, brainstorm, define, design, build, iterate, or ship.';
-const instructions = `Read \`${workflowPath}\` from the project root and follow it for the user’s requested Spindle phase. With no phase argument, report status. Treat arguments as task input and pass only validated values to terminal commands.`;
+const description = 'Run the Spindle spec-driven workflow for this repository. Use for Spindle init, status, resume, brainstorm, define, design, build, iterate, or ship.';
+const instructions = `Read \`${workflowPath}\` from the intended project root before acting. Follow only the Spindle action requested by the user. With no action, report status. Use the supplied text as task input, never as a terminal command.`;
 
 const sharedSkill = { directory: '.agents/skills', name: 'spindle-workflow' };
 const skills = {

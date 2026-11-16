@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { type GateContext, type GateResult, pass, block } from './types.js';
 import {
+  extractCriteriaIds,
   validateSections,
   hasManifestTable,
   parseSections,
@@ -61,9 +62,10 @@ export function gDefine(ctx: GateContext): GateResult {
   // section has a body; it cannot tell `AC-1: the CRC is 29B1` from `AC-1: TBD`.
   // Inside the criteria section a stub token is unambiguously not a criterion, so
   // this needs no config knob — an unwritten criterion can't be diffed at G_BUILD.
-  const criteriaBody = parseSections(md).find(
-    (sec) => sec.title.trim().toLowerCase() === CRITERIA_SECTION.toLowerCase()
-  )?.body;
+  const criteriaBody = parseSections(md)
+    .filter((sec) => sec.title.trim().toLowerCase() === CRITERIA_SECTION.toLowerCase())
+    .map((sec) => sec.body)
+    .join('\n');
   if (criteriaBody) {
     for (const token of findPlaceholders(criteriaBody)) {
       reasons.push(`"${CRITERIA_SECTION}" still carries the placeholder "${token}"`);
@@ -90,6 +92,18 @@ export function gDefine(ctx: GateContext): GateResult {
         criteria?: string[];
         open_questions?: string[];
       };
+      // Build and Ship use the handoff IDs. Keep them aligned with the
+      // requirements the reviewer sees in the Markdown acceptance criteria.
+      const handoffIds = [...new Set(data.criteria ?? [])];
+      const criteria = criteriaDiff(extractCriteriaIds(criteriaBody, 'AC'), handoffIds);
+      for (const id of criteria.unmet) {
+        reasons.push(`acceptance criterion ${id} appears in DEFINE.md but is missing from the define handoff`);
+        unmet.push(`criteria-missing-from-handoff:${id}`);
+      }
+      for (const id of criteria.extra) {
+        reasons.push(`acceptance criterion ${id} appears in the define handoff but is missing from the DEFINE.md acceptance criteria`);
+        unmet.push(`criteria-missing-from-markdown:${id}`);
+      }
       if (typeof floor === 'number' && typeof data.clarity === 'number' && data.clarity < floor) {
         reasons.push(`clarity ${data.clarity} is below the configured floor ${floor}`);
         unmet.push('clarity-floor');

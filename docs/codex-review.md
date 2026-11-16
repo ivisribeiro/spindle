@@ -30,8 +30,9 @@ codex --version                   # confirm it is on PATH
 
 ## 3. Config — `.spindle/codex.env` (optional, gitignored)
 
-`.spindle/` is gitignored, so this file is safe for the key. The helper sources it before
-reading the process env. Template:
+Keep this file ignored in your project and create it yourself. The helper reads
+it as shell configuration, so use a file you trust. An API key can stay in the
+process environment. Example configuration:
 
 ```bash
 # .spindle/codex.env  — per-project codex review config (DO NOT COMMIT)
@@ -54,14 +55,15 @@ You can also set any of these as plain environment variables instead of using th
 /codex-review src/auth   # scope to a path
 ```
 
-It runs `scripts/codex-review.sh`, adapts codex's output into a `finding` sidecar
+It runs `scripts/codex-review.sh` with a read-only Codex sandbox and adapts a valid JSON array into a `finding` sidecar
 (`source: codex`), and lets `spin gate G_REVIEW_BLOCK` decide. The gate is the judge of
 record — never codex's own stop behavior.
 
 ## Markers (fail-open)
 
 The helper never blocks; on any unmet precondition it prints a marker and exits 0, and you
-fall back to `/review`:
+fall back to `/review`. Empty or malformed responses also use the fallback. An
+actual JSON `[]` records a successful review with zero findings.
 
 | Marker | Meaning | Fix |
 |---|---|---|

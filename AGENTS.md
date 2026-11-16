@@ -128,8 +128,8 @@ between `src/`+`schemas/` and `plugin/`.
 | `spin budget [--max-tokens n]` | reconcile model-reported token spend per tier vs an optional ceiling. Advisory — always exit 0 (accounting, not enforcement) |
 | `spin fanout-check` | assert no `parallel_group` is partially complete (a dropped fan-out worker); exit 0 all-consistent / 1 partial. Run before a phase gate |
 | `spin state` | the `run.json` ledger (`completed[]`, `retries{}`, `gates{}`) |
-| `spin complete <id> [--handoff f.json]` | validate the handoff against the artifact's schema, THEN mark complete (exit 1 if invalid) |
-| `spin approve [--by <name>]` | record human sign-off (required by `G_SHIP`). REFUSES unless stdin is an interactive TTY — an automated agent cannot approve. No bypass flag |
+| `spin complete <id> [--handoff f.json]` | require predecessors and lifecycle gates, validate the handoff, then mark complete (exit 1 if blocked) |
+| `spin approve [--by <name>]` | record human sign-off (required by `G_SHIP`). REFUSES unless stdin is an interactive TTY. The user runs it directly and the assistant never invokes it |
 | `spin invalidate <id>` | after an `/iterate` edit: drop `<id>` + its downstream closure from the ledger and void ALL gate verdicts + approval, so no stale-green survives |
 | `spin validate <id\|path>` | structural checks (md sections / manifest table / criteria IDs); exit 0/1 |
 | `spin gate <gateId> [--agents d] [--routing f] [--kb d] [--findings f]` | run a named gate; exit 0 pass / 1 BLOCK with `{gate,passed,reasons,unmet}`. `--kb` (default `plugin/kb`) backs G_ROUTER_COVERAGE's kb_domains referential check |

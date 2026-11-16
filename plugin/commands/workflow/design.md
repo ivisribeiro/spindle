@@ -5,7 +5,9 @@ description: Phase 2 workflow command. Gates on G_DEFINE, dispatches an Opus des
 
 # /design
 
-Phase 2 of the SDD workflow. Requires a passing G_DEFINE gate before any design work begins.
+Run from the project root with the CLI bundled in the plugin. Continue on
+exit 0, handle blocks on exit 1, fix invocation errors on exit 2, and stop for
+diagnosis on exit 3.
 
 ## Protocol
 
@@ -15,7 +17,7 @@ Phase 2 of the SDD workflow. Requires a passing G_DEFINE gate before any design 
 spin gate G_DEFINE
 ```
 
-Exit 1 → surface `{gate, passed, reasons, unmet}` and STOP. Do not proceed until the caller fixes the DEFINE artifact and re-runs `/design`.
+Exit 1 → surface `{gate, passed, reasons, unmet}` and STOP. Resolve a recorded DEFINE error through `/iterate` before resuming.
 
 ### 2. Determine the ready artifact
 
@@ -23,8 +25,10 @@ Exit 1 → surface `{gate, passed, reasons, unmet}` and STOP. Do not proceed unt
 spin next
 ```
 
-Expect `{ ready: [{id, model, parallel_group}], blocked: {}, complete: false }`.  
-The design phase has one artifact: `design`. Confirm `id` is `design` and read its `model` hint (should be `opus`).
+Use the returned `feature` as the slug and require `design` in `ready[]`.
+If Design is already recorded in `spin state`, run `spin gate G_DESIGN` to
+report its status. Use `/iterate` for changes. For other blocks, report
+`blocked` and `gate_blocked`.
 
 ### 3. Route the design worker
 
@@ -42,7 +46,7 @@ Spawn one worker subagent with the model from step 3. The worker must:
 2. Read `.spindle/schema.yaml` to understand artifact expectations.
 3. Author `.spindle/features/<feature>/DESIGN.md` with **exactly** these top-level sections:
    - `## Overview` — narrative of the approach, key constraints, and rationale.
-   - `## File Manifest` — a markdown table with columns `| File | Action | Purpose |` listing every file the build phase will create or modify (`action`: `create` or `modify`).
+   - `## File Manifest` — a markdown table with columns `| File | Action | Purpose |` listing every file the build phase will create or modify. The bundled Build gate checks file existence for every manifest path. If this design requires deletions, surface that limitation before finalizing the phase.
    - `## Decisions` — numbered list of non-obvious architectural or implementation decisions with rationale.
 4. Write a JSON handoff sidecar to `.spindle/features/<feature>/.handoffs/design.json` matching the `design` handoff schema:
 
@@ -50,7 +54,7 @@ Spawn one worker subagent with the model from step 3. The worker must:
 {
   "feature": "<slug>",
   "manifest": [
-    { "file": "<path>", "action": "create|modify|delete", "purpose": "<one sentence>" }
+    { "file": "<path>", "action": "create", "purpose": "<one sentence>" }
   ],
   "decisions": [
     "<decision text>"
@@ -60,20 +64,26 @@ Spawn one worker subagent with the model from step 3. The worker must:
 
 The worker must not proceed to any implementation. Design artifacts only.
 
-### 5. Complete the design artifact (validate handoff)
+### 5. Validate and complete the design artifact
+
+```bash
+spin validate design
+```
+
+Run completion only after structural validation returns exit 0.
 
 ```bash
 spin complete design --handoff .spindle/features/<feature>/.handoffs/design.json
 ```
 
-**Exit 1** → handoff is invalid. Run the bounded-retry loop:
+**Exit 1** from structural validation or invalid handoff → check and record a bounded retry:
 
 ```bash
-spin retry design --inc   # increment retry counter
-# exit 1 at ceiling -> STOP with error: "design retry ceiling reached"
+spin retry design --ok
+spin retry design --inc
 ```
 
-Re-dispatch the worker with the `{reasons, unmet}` from the failed `spin complete` call. Repeat until exit 0 or ceiling.
+Increment only if the check passes. When both calls pass, re-dispatch the worker with the returned errors and repeat validation. At the ceiling, stop and report the unresolved errors.
 
 **Exit 0** → DESIGN is complete. Continue.
 
@@ -83,7 +93,7 @@ Re-dispatch the worker with the `{reasons, unmet}` from the failed `spin complet
 spin gate G_DESIGN
 ```
 
-Exit 1 → surface `{gate, passed, reasons, unmet}` and STOP. Tell the caller which criteria failed and that `/design` must be re-run after fixing the artifact.
+Exit 1 → surface `{gate, passed, reasons, unmet}` and STOP. Use `/iterate` for repairs to the recorded artifact or its handoff.
 
 Exit 0 → proceed.
 
@@ -99,15 +109,6 @@ Run /build to begin implementation.
 ```
 
 Do not start implementing. Do not call `spin next` beyond confirming the DESIGN artifact is the one in play. Control passes to `/build`.
-
-## Error surfaces
-
-| Condition | Action |
-|---|---|
-| G_DEFINE exit 1 | STOP. Print `reasons` + `unmet`. Tell user to fix DEFINE and re-run `/design`. |
-| `spin next` shows no ready artifact | STOP. Print `spin state` output. Something in the ledger is inconsistent. |
-| `spin complete` exit 1 (invalid handoff) | Retry via `spin retry design --inc`; re-dispatch worker. Stop at ceiling. |
-| G_DESIGN exit 1 | STOP. Print `reasons` + `unmet`. Tell user to fix DESIGN.md and re-run `/design`. |
 
 ## Constraints
 

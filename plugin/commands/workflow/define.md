@@ -7,6 +7,10 @@ description: Phase 1 — dispatch define-worker (opus) to produce DEFINE.md + de
 
 Phase 1 of the SDD workflow. Produces the **DEFINE.md** artifact (Why / What / Acceptance Criteria with `AC-n` ids) and a **define handoff sidecar**, then validates both and runs `G_DEFINE` before recommending `/design`.
 
+Run from the project root. Use the CLI bundled with the plugin for every
+`spin` command. Continue on exit 0, handle blocks on exit 1, fix invocation
+errors on exit 2, and stop for diagnosis on exit 3.
+
 ---
 
 ### Step 1 — check readiness
@@ -15,7 +19,10 @@ Phase 1 of the SDD workflow. Produces the **DEFINE.md** artifact (Why / What / A
 spin next
 ```
 
-Parse the JSON response. If `complete: true` or the `ready` array does not contain the `define` artifact, surface the blocked state to the user and stop.
+Use the returned `feature` as the slug. Require `define` in `ready[]` before
+writing. If Define is already recorded in `spin state`, run `spin gate G_DEFINE`
+to report its current status and use `/iterate` for changes. For other blocks,
+surface `blocked` or `gate_blocked` and stop.
 
 ---
 
@@ -31,7 +38,9 @@ The response returns `{ tier: "opus", model, reason }`. The define phase uses th
 
 ### Step 3 — dispatch define-worker (opus)
 
-Dispatch a single Task on the model returned by `spin route define-intent`. Pass the feature slug and the path to `.spindle/schema.yaml`.
+Dispatch a single Task on the model returned by `spin route define-intent`. Pass the feature slug, the active schema, the user's brief, and any completed
+discovery artifact. Address material ambiguities with the user before asking the
+worker to turn them into acceptance criteria.
 
 The **define-worker** must:
 
@@ -55,7 +64,7 @@ The **define-worker** must:
 ### Step 4 — validate the artifact
 
 ```bash
-spin validate .spindle/features/<feature>/DEFINE.md
+spin validate define
 ```
 
 The JSON carries two **advisory** fields alongside the verdict. Neither changes the exit code — read them, do not branch on them:
@@ -65,14 +74,17 @@ The JSON carries two **advisory** fields alongside the verdict. Neither changes 
 
 Surface `readiness` and any `uncovered[]` blocks to the user before moving on. A low score is not a failure here — it is the honest read on how much of the problem space DEFINE actually touched, and the user decides whether that is enough.
 
-If exit code is `1`, the artifact has structural issues (missing sections, malformed `AC-n` ids). Enter the bounded fix loop:
+On exit 1, report the structural errors. Use the same bounded repair for
+validation or handoff failures:
 
 ```bash
+spin retry define --ok
 spin retry define --inc
 ```
 
-- If `--inc` exits `0`: re-dispatch the define-worker (return to Step 3).
-- If `--inc` exits `1` (ceiling reached): call `spin retry define --ok` and **stop**. Surface the validation errors and the retry ceiling to the user.
+Run the increment only if the check passes. Re-dispatch only after both return
+exit 0, then repeat validation. At the ceiling, retain the visible errors and
+stop.
 
 ---
 
@@ -82,7 +94,8 @@ spin retry define --inc
 spin complete define --handoff .spindle/features/<feature>/.handoffs/define.json
 ```
 
-If exit code is `1`, the handoff JSON is invalid (schema mismatch or missing fields). Enter the bounded fix loop (same as Step 4): `spin retry define --inc` → re-dispatch worker → retry complete; stop at ceiling with `spin retry define --ok`.
+On exit 1 from an invalid handoff, use the bounded repair above and revalidate
+both outputs. Surface any `unknown_keys` returned by the CLI.
 
 ---
 
@@ -92,11 +105,11 @@ If exit code is `1`, the handoff JSON is invalid (schema mismatch or missing fie
 spin gate G_DEFINE
 ```
 
-**exit 1 — BLOCKED:** Surface `reasons` and `unmet` to the user. Do **not** advance to `/design`. The user must resolve the blockers (edit DEFINE.md or the handoff sidecar) and re-run `/define`.
+**exit 1 — BLOCKED:** Surface `reasons` and `unmet` to the user. Do **not** advance to `/design`. Use `/iterate` to invalidate the recorded Define artifact before editing it or its handoff.
 
 Three unmet shapes are worth translating for the user rather than echoing raw:
 
-- `placeholder-criterion:<token>` — an acceptance criterion is still a stub (`AC-1: TBD`). Always enforced: an unwritten criterion cannot be diffed at `G_BUILD`, so it would surface as a phantom pass later. Re-dispatch the worker to write the real criterion.
+- `placeholder-criterion:<token>` — an acceptance criterion is still a stub (`AC-1: TBD`). Write a concrete, testable criterion as part of the repair.
 - `coverage-floor` + `coverage-block:<id>` — only when the schema sets `config.coverage_floor`. The DEFINE does not discuss enough of the discovery blocks named in the `coverage-block:` entries. Fix by writing the missing dimensions, never by lowering the floor mid-run.
 - `clarity-floor` — only when the schema sets `config.clarity_floor`; this one reads the worker's self-reported number.
 

@@ -1,6 +1,6 @@
 ---
 name: codex-review
-description: Native cross-vendor review — Spindle runs the codex (OpenAI) CLI directly as an independent reviewer of the current work, adapts its output into a `finding` sidecar (source=codex), and lets the deterministic G_REVIEW_BLOCK gate decide. The strongest form of "the verifier is not the generator": a different vendor judges the code Claude wrote. Opt-in and fail-open — if the codex CLI is absent the command reports and falls back to /review.
+description: Native cross-vendor review — Spindle runs the codex (OpenAI) CLI directly as an independent reviewer of the current work, adapts its output into a `finding` sidecar (source=codex), and lets the deterministic G_REVIEW_BLOCK gate decide. The strongest form of "the verifier is not the generator": a different vendor judges the code Claude wrote. Opt-in. If the independent review cannot run or its output is unusable, report it as unavailable and fall back to /review.
 ---
 
 Run an independent cross-vendor review of the current diff (or a target path) using the
@@ -26,24 +26,25 @@ vendor's independent judgment is worth the cost, and skip it otherwise.
 
 ### 1. Run the native cross-vendor reviewer
 
-```
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/codex-review.sh "diff" > .spindle/review/codex-raw.txt 2>&1
+```bash
+mkdir -p .spindle/review/.handoffs &&
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/codex-review.sh" "diff" > .spindle/review/codex-raw.txt
 ```
 
-(Replace `"diff"` with a path/dir to scope the review.) Read `.spindle/review/codex-raw.txt`.
+For a scoped review, pass a validated project-relative path as one argument.
+Check the shell exit code before using the newly captured response. Read
+`.spindle/review/codex-raw.txt` only after the command succeeds.
 
-- If it begins with `CODEX_UNAVAILABLE` → the codex CLI is not installed. This is a fail-open
-  skip, NOT a block: tell the user the native cross-vendor review was skipped (install the
-  codex CLI + `codex login` to enable) and run `/review` instead for the Claude-side
-  adversarial pass. Stop here.
-- If it begins with `CODEX_ERROR` → codex ran but failed (often auth). Report it and fall
-  back to `/review`. Stop here.
-- Otherwise the file holds codex's review (expected: a JSON array of findings).
+- `CODEX_DISABLED`, `CODEX_UNAVAILABLE`, or `CODEX_ERROR`: report the independent
+  review as unavailable for this run. Fall back to `/review` and stop this flow
+  before writing a Codex handoff or running its gate.
+- Otherwise parse the response as JSON. Require an array. An empty array is
+  a valid response. An empty file, prose, or invalid JSON is an unavailable
+  review. Follow the same fallback without reusing any earlier sidecar.
 
 ### 2. Adapt codex output into a `finding` sidecar
 
-Extract the JSON array of findings from `.spindle/review/codex-raw.txt` (codex may wrap it
-in prose — take only the array). Normalize each entry to the `finding` contract and FORCE
+Normalize each entry to the `finding` contract and FORCE
 `source` to `"codex"`:
 
 ```json
@@ -53,8 +54,8 @@ in prose — take only the array). Normalize each entry to the `finding` contrac
 ] }
 ```
 
-Map any non-conforming severity codex emits into the enum (e.g. `error`→`high`,
-`warning`→`medium`, `info`→`low`). Write the result to:
+Preserve the severity and evidence in every finding. If a record cannot meet the
+contract, report an unusable review and use the fallback. Write the result to:
 
 ```
 .spindle/review/.handoffs/codex.json
@@ -68,8 +69,8 @@ If codex returned an empty array, write `{ "findings": [] }`.
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js handoff-check finding .spindle/review/.handoffs/codex.json
 ```
 
-Exit 1 → the adaptation is malformed. Re-extract and rewrite the sidecar (you control this
-step; the failure is in your JSON shaping, not the gate). Do not invent findings.
+Proceed to the gate only on exit 0. If validation fails, report the error and
+use the fallback. Do not invent findings or replace invalid output with an empty array.
 
 ### 4. Gate — Spindle decides, not codex
 
@@ -82,20 +83,23 @@ Spindle's own deterministic gate is the judge of record — never codex's own st
 - Exit 1 → STOP. A cross-vendor CRITICAL finding survived. Surface `reasons` and `unmet`
   verbatim, list the critical findings (file, line, rule, message), and do not proceed.
 - Exit 0 → no surviving CRITICAL from codex. Continue.
+- Exit 2 or 3 → stop and report the CLI error.
 
 ### 5. (Optional) merge with the Claude-side critics
 
 For the strongest independence, run this alongside `/review` and merge both finding sets
-deterministically, then require both vendors:
+deterministically, then require two attributed sources. Use explicit sidecar
+paths from the current review only. In the example, replace the Claude sidecar
+path with the current validated findings file:
 
 ```
-node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js merge-findings .spindle/review/.handoffs/*.json --out findings.json
+node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js merge-findings .spindle/review/.handoffs/codex.json .spindle/review/filtered-findings.json --out findings.json
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js gate G_REVIEW_BLOCK --findings findings.json --min-sources 2
 ```
 
 `merge-findings` dedups and aggregates the `sources` summary; `--min-sources 2` makes
-`G_REVIEW_BLOCK` require >=2 distinct sources (e.g. `codex` + `arch-worker`). Distinct
-sources prove attribution; running a separate vendor entirely is what gives the independence.
+`G_REVIEW_BLOCK` require >=2 distinct sources (e.g. `codex` + `arch-worker`). Counts reflect source labels present in the findings. An empty review adds no
+source label. Confirm which reviewers actually ran from their current outputs.
 
 ### 6. Report
 

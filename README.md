@@ -25,15 +25,15 @@ Open your assistant from the project root and invoke Spindle:
 | Cursor | `/spindle-workflow` | `.agents/skills/spindle-workflow/SKILL.md` |
 | Other assistants with local file and shell access | Ask it to read and follow `.spindle/harness-workflow.md` | `.spindle/harness-workflow.md` |
 
-Ask the assistant to start the SDD workflow for `payments-reconciliation`, or ask it to show the next step in an existing run. When switching assistants, use the same checkout and ask the new assistant to resume. Each checkout has one active run. Use one orchestrating session at a time so each phase sees the current ledger.
+Ask the assistant to start the SDD workflow for `payments-reconciliation`, or ask it to show the next step in an existing run. When switching assistants, use the same checkout. Ask for `status` to inspect the run or `resume` to continue the earliest unfinished main phase. Each checkout has one active run. Use one orchestrating session at a time so each phase sees the current ledger.
 
 Use `--target codex`, `claude`, `gemini`, `cursor`, or `portable` to install for a single environment. Rerun the installer to update. It checks for conflicts and preserves locally edited integration files. If the project ignores `.spindle/`, each teammate runs the installer in their own checkout to get the local runtime.
 
-The portable workflow covers brainstorm, define, design, build, ship, iteration, and status. The [native Claude Code plugin](#native-claude-code-plugin) also includes audit, knowledge-base authoring, specialist workflows, and cross-vendor review.
+The portable workflow covers brainstorm, define, design, build, ship, iteration, status, and resume. The [native Claude Code plugin](#native-claude-code-plugin) also includes audit, knowledge-base authoring, specialist workflows, and cross-vendor review.
 
 ## What Spindle checks
 
-- **Acceptance criteria carry through the build.** Define assigns IDs such as `AC-1`. The build report records results against those IDs. `G_BUILD` checks for missing criteria and undeclared criteria reported as passed. It can require a verifier reference and block when supplied CI evidence reports a failed verification.
+- **Acceptance criteria carry through the build.** Define assigns IDs such as `AC-1`. `G_DEFINE` checks that the Markdown and JSON handoff list the same criteria. The build report records results against those IDs. `G_BUILD` checks for missing criteria and undeclared criteria reported as passed. It can require a verifier reference and block when supplied CI evidence reports a failed verification.
 - **Spec corrections stay visible.** A build can record that it corrected a criterion. `G_SHIP` blocks while any recorded correction remains unreconciled.
 - **Shipping requires a sign-off.** The developer runs `spin approve` from an interactive terminal. `G_SHIP` checks the recorded approval. `spin invalidate` clears approval and gate verdicts and reopens the affected work.
 - **The project keeps the evidence.** `.spindle/` holds the editable workflow, Markdown artifacts, JSON handoffs, and the run-ledger. `spin trace` shows recorded completions, gate verdicts, retries, and approval.
@@ -122,7 +122,7 @@ Invoke `node /path/to/spindle/bin/spin.js` from your project root to use the che
 | `spin order` | Full Kahn build order for the active schema | 0 |
 | `spin state` (alias `spin status`) | Print the `run.json` ledger (`completed[]`, `retries{}`, `gates{}`) | 0 |
 | `spin explain <gateId>` | What a gate reads, what blocks it, which flags apply — no source-diving | 0 / 2 |
-| `spin complete <id> [--handoff f.json]` | Validate the worker handoff against the artifact's schema, then mark complete. **exit 1** if the handoff is invalid, a lifecycle gate required before `<id>` (schema `gates:` map — incl. the terminal `during`/`before_complete` hooks on the final artifact) hasn't passed, or a handoff-less artifact's `generates` output is missing on disk. A stray `--handoff` on a handoff-less artifact is a usage error | 0 / 1 / 2 |
+| `spin complete <id> [--handoff f.json]` | Validate the worker handoff against the artifact's schema, then mark complete. **exit 1** if the handoff is invalid, a lifecycle gate required before `<id>` (schema `gates:` map — incl. the terminal `during`/`before_complete` hooks on the final artifact) hasn't passed, a predecessor is absent from the ledger, or a handoff-less artifact's `generates` output is missing on disk. A stray `--handoff` on a handoff-less artifact is a usage error | 0 / 1 / 2 |
 | `spin validate <id\|path>` | Structural checks (MD sections / manifest table / criteria IDs) | 0 / 1 |
 | `spin gate <gateId> [--agents d] [--routing f] [--kb d] [--findings f]` | Run a named gate. exit 0 = pass, exit 1 = BLOCK with `{gate,passed,reasons,unmet}`. An **unknown** gate id is a usage error (exit 2) and writes nothing to the ledger | 0 / 1 / 2 |
 | `spin diff-criteria --define f --build f` | Set-diff DEFINE criteria vs BUILD passed → `unmet[]` | 0 / 1 |
@@ -159,7 +159,7 @@ Gates are run via `spin gate <id>`. A command that receives exit 1 surfaces `{ga
 | `G_DEFINE` | `/design` | DEFINE sections present (`Why`/`What`/`Acceptance Criteria`), define handoff valid, optional clarity floor met |
 | `G_DESIGN` | `/build` | DESIGN sections present (`Overview`/`File Manifest`/`Decisions`), a file-manifest table present, design handoff valid |
 | `G_BUILD` | `/ship` | Every manifest file exists on disk; every DEFINE criterion `passed`; **no phantom criterion** (a `passed` AC-n DEFINE never declared → set-drift); a cited `verified_by` file must exist; **a passed criterion whose CI verifier reported `failed` blocks** (the spine reads the CI result, never runs the verifier); when `config.require_verified_by`, every passed criterion must cite a verifier; manifest/`verified_by` paths must stay inside the project root (no `..` escape); when a CI `coverage` summary is reported, its `pct` must meet its `threshold`; BUILD_REPORT present |
-| `G_SHIP` | publish | DEFINE criteria minus build.passed must be empty; no phantom criterion; **unreconciled spec-drift blocks** — a build that CORRECTED a criterion emits a `spec-drift:<AC>` unmet entry per affected criterion until DEFINE is reconciled (`reconciled: true`); **a human approval must be recorded via `spin approve`** in an interactive terminal |
+| `G_SHIP` | archive | DEFINE criteria minus build.passed must be empty; no phantom criterion; **unreconciled spec-drift blocks** — a build that CORRECTED a criterion emits a `spec-drift:<AC>` unmet entry per affected criterion until DEFINE is reconciled (`reconciled: true`); **a human approval must be recorded via `spin approve`** in an interactive terminal |
 | `G_KB_STRUCTURE` | KB publish | KB structure checks |
 | `G_KB_COVERAGE` | KB publish | KB coverage checks |
 | `G_ROUTER_COVERAGE` | router validate | Agent→routing bijection, no silent skips |
@@ -352,7 +352,7 @@ build worker ─▶ code + tests + build-report (verified_by + CI verified_by_re
 
 ### 4 — Iterate cascade (no stale-green)
 
-Editing a gated artifact must invalidate everything downstream of it. `spin invalidate` drops the closure from the ledger and voids **all** gate verdicts and the approval — a re-edit can never ride an old green run.
+Run `spin invalidate` before editing a gated artifact. It removes the artifact and its downstream dependencies from the completed list and clears every gate verdict and approval. If a file was edited outside the workflow, invalidate the affected phase before relying on the ledger. The current run state does not automatically detect those edits.
 
 ```
 /iterate edits DESIGN

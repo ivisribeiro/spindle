@@ -278,25 +278,28 @@ describe('spin CLI exit-code ABI', () => {
     expect(r.json.summary.reported_tokens).toBe(null);
   });
 
-  it('trace records a complete event with opaque model-reported usage', async () => {
-    await cli(['--root', root, 'init', '--schema', 'sdd', '--feature', 'f']);
-    const file = `${root}/define.json`;
-    fs.writeFileSync(
-      file,
-      JSON.stringify({
-        feature: 'f',
-        clarity: 0.9,
-        criteria: ['AC-1'],
-        usage: { tier: 'sonnet', tokens_in: 100, tokens_out: 50 },
-      })
-    );
-    const c = await cli(['--root', root, 'complete', 'define', '--handoff', file]);
-    expect(c.code).toBe(0);
-    const r = await cli(['--root', root, 'trace']);
-    expect(r.json.summary.completed).toBe(1);
-    expect(r.json.summary.tier_histogram.sonnet).toBe(1);
-    expect(r.json.summary.reported_tokens).toEqual({ tokens_in: 100, tokens_out: 50 });
-  });
+  it.each(['define.json', '.spindle/features/f/.handoffs/define.json'])(
+    'trace preserves reported usage from %s',
+    async (inputPath) => {
+      await cli(['--root', root, 'init', '--schema', 'sdd', '--feature', 'f']);
+      const file = `${root}/${inputPath}`;
+      fs.writeFileSync(
+        file,
+        JSON.stringify({
+          feature: 'f',
+          clarity: 0.9,
+          criteria: ['AC-1'],
+          usage: { tier: 'sonnet', tokens_in: 100, tokens_out: 50 },
+        })
+      );
+      const c = await cli(['--root', root, 'complete', 'define', '--handoff', file]);
+      expect(c.code).toBe(0);
+      const r = await cli(['--root', root, 'trace']);
+      expect(r.json.summary.completed).toBe(1);
+      expect(r.json.summary.tier_histogram.sonnet).toBe(1);
+      expect(r.json.summary.reported_tokens).toEqual({ tokens_in: 100, tokens_out: 50 });
+    }
+  );
 
   it('trace counts a completion without usage as unreported, tokens stay null', async () => {
     await cli(['--root', root, 'init', '--schema', 'sdd', '--feature', 'f']);

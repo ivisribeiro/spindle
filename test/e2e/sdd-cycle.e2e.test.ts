@@ -135,6 +135,63 @@ describe('E2E: full SDD cycle through the spin CLI', () => {
     expect((await R('complete', 'design', '--handoff', gh)).code).toBe(0);
   });
 
+  it('requires a recorded predecessor even if its gate passes from files on disk', async () => {
+    await R('init', '--schema', 'sdd', '--feature', 'dependency');
+    write(
+      root,
+      '.spindle/features/dependency/DEFINE.md',
+      '## Why\nPrevent duplicate payments.\n## What\nDeduplicate by import ID.\n' +
+        '## Acceptance Criteria\n- AC-1: Reimporting preserves the balance.\n'
+    );
+    const define = writeJson(root, '.spindle/features/dependency/.handoffs/define.json', {
+      feature: 'dependency', clarity: 0.9, criteria: ['AC-1'],
+    });
+    const design = writeJson(root, 'work/design.json', {
+      feature: 'dependency', manifest: [{ file: 'src/import.ts', action: 'create', purpose: 'Deduplicate imports' }], decisions: [],
+    });
+
+    expect((await R('gate', 'G_DEFINE')).code).toBe(0);
+    const blocked = await R('complete', 'design', '--handoff', design);
+    expect(blocked.code).toBe(1);
+    expect(blocked.json.unmet).toEqual(['define']);
+    expect((await R('state')).json.completed).toEqual([]);
+
+    expect((await R('complete', 'define', '--handoff', define)).code).toBe(0);
+    expect((await R('complete', 'design', '--handoff', design)).code).toBe(0);
+  });
+
+  it('keeps design blocked until the spec and handoff list the same acceptance criteria', async () => {
+    await R('init', '--schema', 'sdd', '--feature', 'criteria');
+    write(
+      root,
+      '.spindle/features/criteria/DEFINE.md',
+      '## Why\nReplace legacy AC-3.\n## What\nDeduplicate imports.\n## Acceptance Criteria\n' +
+        '- AC-1: The first import records the payment.\n- AC-2: Reimporting preserves the balance.\n'
+    );
+    const handoff = 'work/define.json';
+    const completeDefine = (criteria: string[]) =>
+      R('complete', 'define', '--handoff', writeJson(root, handoff, {
+        feature: 'criteria',
+        clarity: 0.9,
+        criteria,
+      }));
+
+    expect((await completeDefine(['AC-1', 'AC-3'])).code).toBe(0);
+    const verdict = await R('gate', 'G_DEFINE');
+    expect(verdict.code).toBe(1);
+    expect(verdict.json.unmet).toEqual([
+      'criteria-missing-from-handoff:AC-2',
+      'criteria-missing-from-markdown:AC-3',
+    ]);
+    expect((await R('next')).json.gate_blocked.design).toEqual(['G_DEFINE']);
+
+    expect((await completeDefine(['AC-2', 'AC-1'])).code).toBe(0);
+    expect((await R('gate', 'G_DEFINE')).code).toBe(0);
+    expect((await R('next')).json.ready).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'design' }),
+    ]));
+  });
+
   it('blocks completing a handoff-less artifact until its output exists on disk', async () => {
     await R('init', '--schema', 'sdd', '--feature', 'bs');
     // brainstorm has no handoff schema — completing it with no BRAINSTORM.md would hand the

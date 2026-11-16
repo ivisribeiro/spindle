@@ -45,7 +45,7 @@ Write to `$FEATURE_DIR/DESIGN.md`. The file MUST contain these three sections in
 | path/to/other.ts | modify | <one-line purpose> |
 | path/to/test.ts | create | <one-line test purpose> |
 
-Actions MUST be one of: `create` `modify` `delete`
+Use `create` and `modify` for these build outputs.
 Every file that a BUILD worker will touch must appear here.
 Include test files. Do not list files that will not change.
 
@@ -56,10 +56,12 @@ Include test files. Do not list files that will not change.
 ```
 
 Rules for the manifest table:
-- Paths are relative to the repo root.
+- Paths are relative to the repo root and must stay inside it.
 - One row per file — no globs, no wildcards.
-- If a file already exists on disk (confirmed via Glob/Read), use `modify` or `delete`; otherwise `create`.
-- At minimum include one test file per new module.
+- Use `modify` for an existing file and `create` for a new file.
+- Include test changes needed to verify the criteria.
+- Flag required deletions to the coordinator. The bundled Build gate expects
+  every manifest target to exist at completion.
 
 ## Producing the handoff sidecar
 
@@ -88,7 +90,7 @@ Rules:
 Before writing the final files, verify:
 - [ ] DESIGN.md has all three required sections (`## Overview`, `## File Manifest`, `## Decisions`).
 - [ ] Every manifest row has `file`, `action`, and `purpose` columns populated.
-- [ ] `action` values are only `create`, `modify`, or `delete`.
+- [ ] Each `action` matches the planned output.
 - [ ] `.handoffs/design.json` `manifest` array matches the table row-for-row.
 - [ ] No invented `spin` flags or gate IDs appear in this document.
 

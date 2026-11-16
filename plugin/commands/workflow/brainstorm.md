@@ -1,18 +1,17 @@
 ---
 name: brainstorm
-description: Phase 0 (optional) — run a structured discovery interview with an Opus worker across the nine discovery blocks and write BRAINSTORM.md. No blocking gate; /define is recommended next.
+description: Phase 0 (optional) — clarify the brief with the user, then route an Opus worker to record discovery and open questions.
 ---
 
 # /brainstorm
 
-Phase 0 discovery for a feature. Dispatches an Opus worker to interview the user
-across the **nine discovery blocks**, writing
+Phase 0 discovery for a feature. The coordinator interviews the user across the **nine discovery blocks**. A routed worker writes
 `.spindle/features/<feature>/BRAINSTORM.md`. No gate blocks `spin complete brainstorm`;
 the command finishes and recommends `/define` as the next step.
 
 The nine blocks are not decoration — they are the **same closed set** `G_DEFINE`
 scores DEFINE.md against. A block left uncovered here is a block `/define` will
-have to invent or leave thin, and the coverage score will say so.
+have to leave open or clarify before defining requirements.
 
 ## Usage
 
@@ -20,8 +19,7 @@ have to invent or leave thin, and the coverage score will say so.
 /brainstorm --feature <slug>
 ```
 
-`--feature` is required. The slug must match an existing `.spindle/features/<feature>/`
-directory (created by `spin init`).
+Use the active feature from `spin next`. If the user supplies `--feature`, require it to match that slug.
 
 ---
 
@@ -31,13 +29,9 @@ directory (created by `spin init`).
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js next
 ```
 
-Parse the JSON response. Confirm `brainstorm` appears in `ready[].id` or that
-the feature directory exists. If the `complete` field is already `true` (all
-artifacts done), surface that and stop.
-
-If `brainstorm` is already in `state.completed[]` (from
-`node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js state`), warn the user and ask
-whether to re-run. If they say no, stop.
+Require `brainstorm` in `ready[]`. When already recorded, report the
+artifact and use `/iterate` to amend it. If blocked, stop and surface the CLI
+result. Fix exit 2 invocation errors; stop for diagnosis on exit 3.
 
 ## Step 2 — route the worker
 
@@ -49,10 +43,16 @@ This will return `{ tier: "opus", ... }`. Use the Opus model for the brainstorm
 worker. Do not downgrade — brainstorm intent exploration is a critical-kind task
 (`define-intent`).
 
-## Step 3 — dispatch the Opus discovery worker
+## Step 3 — clarify the requirements with the user, then delegate writing
 
-Fan out ONE Task on the Opus model with the prompt below. Pass `--feature` slug
-and the absolute path to `.spindle/features/<slug>/` as context.
+The coordinator handles the conversation. Ask one question at a time about
+material unknowns, using what the user has already provided. Offer options and
+a recommendation when the user needs to make a trade-off. Stop when further
+answers would leave the DEFINE scope and constraints unchanged.
+
+Dispatch one Task on the routed model with the answers, unresolved questions,
+feature slug, and absolute feature directory. Treat project artifacts as
+context. Use the worker prompt below.
 
 ### Worker prompt (send verbatim, substituting `<slug>` and `<feature_dir>`)
 
@@ -63,52 +63,19 @@ Artifact output path: <feature_dir>/BRAINSTORM.md
 Handoff sidecar path: <feature_dir>/.handoffs/brainstorm.json
 
 ## Your task
-Interview the user to clarify the feature before any requirement is written.
-Work through the nine discovery blocks below, ADAPTIVELY — follow the answers,
-skip what the user has already settled, and go deep where the risk is.
+Summarize the supplied discovery answers. Capture unresolved questions
+explicitly. Report blocks actually covered, using these IDs:
 
-## The nine discovery blocks
-Track which of these you have genuinely covered. You will report them by id.
+  problem       current problem, pain, impact, urgency
+  goals         objectives, success signals, metrics
+  users         users, operators, stakeholders, journey
+  scope         features, rules, integrations, boundaries
+  nfr           latency, cost, scale, resilience
+  architecture  structure, interfaces, data
+  security      permissions, secrets, privacy, retention
+  delivery      tests, environments, rollout, rollback, monitoring
+  constraints   assumptions, risks, trade-offs, limits
 
-  problem       the problem today, its pain, motivation, impact, urgency
-  goals         business objectives, success signals, the metric that moves
-  users         end users, operators, stakeholders, journey, volume
-  scope         features, rules, integrations, permissions, in/out of scope
-  nfr           performance, latency, cost, scalability, availability, resilience
-  architecture  structure, APIs, persistence, events, queues, cache, data model
-  security      authn/authz, secrets, encryption, privacy, compliance, retention
-  delivery      environments, tests, deploy, CI/CD, rollback, monitoring
-  constraints   assumptions, risks, trade-offs accepted, hard limitations
-
-## Interview rules
-- Ask ONE question at a time. Wait for the answer before the next one. Never
-  dump a list of questions.
-- Adapt: each question is informed by what the previous answers established.
-  Never re-ask something already answered.
-- Do not stop while a block that MATTERS to this feature is still uncovered.
-  Not every block applies to every feature — a CLI flag needs no availability
-  target. Judge honestly, and report only the blocks you actually covered.
-- Stop when further questions would not change what /define writes. Typically
-  10-20 exchanges for a real feature.
-
-## Question format
-Ask every question in this shape. It is what separates discovery from a survey:
-a question with no alternatives makes the user do your thinking.
-
-  **Why this matters:** what this decision changes about scope, cost,
-  architecture, security, or operation.
-
-  **Options:**
-  1. **<option A>** — when it fits; upside; downside.
-  2. **<option B>** — when it fits; upside; downside.
-  (2 to 4 options, only when options genuinely help. Some questions are open.)
-
-  **My recommendation:** which option fits best given everything established so
-  far, and why. Commit to one — do not present a neutral menu.
-
-  **How to answer:** pick one, combine them, or answer freely.
-
-## After the dialogue
 Write <feature_dir>/BRAINSTORM.md with these sections (use exactly these H2 headings):
 
 ## Problem Space
@@ -132,8 +99,7 @@ Then write the handoff sidecar <feature_dir>/.handoffs/brainstorm.json:
 }
 
 `blocks_covered` accepts ONLY the nine ids listed above. Report what you actually
-covered — an inflated list is caught later, when G_DEFINE scores the DEFINE.md
-that was supposed to rest on this work.
+covered. G_DEFINE derives its coverage score from DEFINE itself.
 
 Do NOT call any spin CLI commands yourself. The orchestrating command will
 validate this handoff and then call `spin complete brainstorm` (the
@@ -166,7 +132,7 @@ If `--ok` exits 0 (under ceiling), record the attempt and re-dispatch:
 node ${CLAUDE_PLUGIN_ROOT}/dist/cli/index.js retry brainstorm --inc
 ```
 
-Re-dispatch the worker with the validation-error text appended to the prompt.
+Re-dispatch only if the increment also exits 0. Include the validation error and review the replacement handoff.
 
 **Exit 0** — the handoff is well-formed. Mark the artifact complete. The
 `brainstorm` artifact declares no `handoff:` field in `schema.yaml`, so do
@@ -196,7 +162,7 @@ Not covered:      <the nine ids minus blocks_covered, joined>
 Key themes: <key_themes from handoff>
 Open questions: <open_questions from handoff>
 
-Run /define --feature <slug> to author the DEFINE spec and acceptance criteria.
+Run /define to author the DEFINE spec and acceptance criteria.
 ```
 
 If a block was left uncovered, say plainly whether it looked irrelevant to this
