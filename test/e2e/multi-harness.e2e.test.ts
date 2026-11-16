@@ -50,6 +50,16 @@ describe('project-local multi-harness installation', () => {
     expect(approval.stdout + approval.stderr).toContain('interactive');
   });
 
+  it('installs the workspace skill and runtime for Antigravity on its own', () => {
+    const install = run(installer, '--target', 'antigravity');
+    expect(install.status, install.stderr).toBe(0);
+    const skill = readFileSync(join(root, adapters.codex), 'utf8');
+    expect(skill).toContain('name: spindle-workflow');
+    expect(skill).toContain('.spindle/harness-workflow.md');
+    expect(existsSync(join(root, adapters.gemini))).toBe(false);
+    expect(run(runtime, 'doctor').status).toBe(0);
+  });
+
   it('stops before installing other adapters if an existing skill conflicts', () => {
     expect(run(installer, '--target', 'codex').status).toBe(0);
     const codexSkill = join(root, adapters.codex);

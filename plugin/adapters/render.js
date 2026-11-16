@@ -9,6 +9,7 @@ const skills = {
   codex: sharedSkill,
   claude: { directory: '.claude/skills', name: 'spindle-claude-workflow' },
   cursor: sharedSkill,
+  antigravity: sharedSkill,
 };
 
 export async function renderAdapters(target) {

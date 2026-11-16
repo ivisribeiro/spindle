@@ -7,14 +7,14 @@ import { parseArgs } from 'node:util';
 import { renderAdapters } from '../plugin/adapters/render.js';
 
 const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
-const targets = ['codex', 'claude', 'gemini', 'cursor', 'portable'];
+const targets = ['codex', 'claude', 'gemini', 'cursor', 'antigravity', 'portable'];
 const runtime = '.spindle/harness';
 const manifestPath = `${runtime}/install-manifest.json`;
 const lockPath = '.spindle/harness-install.lock';
 const help = `Usage: spindle-install [--root <project>] [--target <name>]
 
   --root     Existing project directory (default: current directory)
-  --target   codex, claude, gemini, cursor, portable, or all (default: all)
+  --target   codex, claude, gemini, cursor, antigravity, portable, or all (default: all)
   --help     Show this message
 `;
 

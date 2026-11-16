@@ -1,7 +1,7 @@
 # Spindle
 
 **Carry one specification from Define to Ship across AI coding assistants.**
-Codex, Claude Code, Gemini CLI, and Cursor can resume the same project
+Codex, Claude Code, Gemini CLI, Cursor, and Antigravity can resume the same project
 checkpoint with its acceptance criteria, evidence, and gate decisions intact.
 
 [Quickstart](#start-here) · [What gets checked](#what-spindle-checks) · [Reflection](#reflection-and-adversarial-review) · [CLI reference](#command-surface)
@@ -21,10 +21,10 @@ report.
 
 ## Start here
 
-Requires Node.js 20.19 or newer. Use the multi-harness branch and install into an existing project:
+Requires Node.js 20.19 or newer. Clone Spindle and install into an existing project:
 
 ```bash
-git clone --branch codex/multi-harness https://github.com/ivisribeiro/spindle.git
+git clone https://github.com/ivisribeiro/spindle.git
 node ./spindle/bin/spindle-install.js --target all --root "/path/to/your/project"
 cd "/path/to/your/project"
 node .spindle/harness/bin/spin.js init --schema sdd --feature payments-reconciliation
@@ -38,11 +38,12 @@ Open your assistant from the project root and invoke Spindle:
 | Claude Code | `/spindle-claude-workflow` | `.claude/skills/spindle-claude-workflow/SKILL.md` |
 | Gemini CLI | `/spindle` | `.gemini/commands/spindle.toml` |
 | Cursor | `/spindle-workflow` | `.agents/skills/spindle-workflow/SKILL.md` |
+| Antigravity | `/spindle-workflow` | `.agents/skills/spindle-workflow/SKILL.md` |
 | Other assistants with local file and shell access | Ask it to read and follow `.spindle/harness-workflow.md` | `.spindle/harness-workflow.md` |
 
 Try `$spindle-workflow define` in Codex with a feature brief. Open Claude Code in the same checkout and run `/spindle-claude-workflow resume` to continue the earliest unfinished main phase. Use `status` to inspect the run without advancing it. Each checkout has one active run. Use one orchestrating session at a time so each phase sees the current ledger.
 
-Use `--target codex`, `claude`, `gemini`, `cursor`, or `portable` to install for a single environment. Rerun the installer to update. It checks for conflicts and preserves locally edited integration files. If the project ignores `.spindle/`, each teammate runs the installer in their own checkout to get the local runtime.
+Use `--target codex`, `claude`, `gemini`, `cursor`, `antigravity`, or `portable` to install for a single environment. Rerun the installer to update. It checks for conflicts and preserves locally edited integration files. If the project ignores `.spindle/`, each teammate runs the installer in their own checkout to get the local runtime.
 
 The portable workflow covers brainstorm, define, design, build, ship, iteration, status, and resume. The [native Claude Code plugin](#native-claude-code-plugin) also includes audit, knowledge-base authoring, specialist workflows, and cross-vendor review.
 
